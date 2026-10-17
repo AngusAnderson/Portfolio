@@ -24,9 +24,6 @@ const map = new GameMap();
 const player = new Player();
 const raycaster = new Raycaster(player, map);
 
-const backgroundImage = new Image();
-backgroundImage.src = "/background.png";
-
 window.addEventListener("keydown", (event: KeyboardEvent) => {
 	player.handleKeyDown(event);
 });
@@ -37,32 +34,68 @@ window.addEventListener("keyup", (event: KeyboardEvent) => {
 
 let previousTime: number | null = null;
 
+canvas.addEventListener("click", async () => {
+	if (document.pointerLockElement === canvas) {
+		return;
+	}
+
+	try {
+		await canvas.requestPointerLock();
+	} catch (error) {
+		console.error("Could not capture the mouse:", error);
+	}
+});
+
+document.addEventListener("mousemove", (event: MouseEvent) => {
+	if (document.pointerLockElement !== canvas) {
+		return;
+	}
+
+	player.handleMouseMove(event);
+});
+
+document.addEventListener("pointerlockerror", () => {
+	console.error(
+		"Pointer lock failed. Click the game again to try capturing the mouse."
+	);
+});
+
 function gameLoop(timestamp: number): void {
-	const deltaTime = previousTime === null ? 0 : (timestamp - previousTime) / 1000;
+	const deltaTime = previousTime === null
+		? 0
+		: (timestamp - previousTime) / 1000;
 
 	previousTime = timestamp;
 
 	player.update(map, deltaTime);
 	raycaster.castAllRays();
 
-  if (!context) { throw new Error("Could not load the canvas context"); }
+	if (!context) {
+		throw new Error("Could not load the canvas context");
+	}
 
-	// Ceiling
+	const horizon = Math.max(
+		0,
+		Math.min(WINDOW_HEIGHT, raycaster.horizonY)
+	);
+
+	// Sky / ceiling.
 	context.fillStyle = "#252530";
-	context.fillRect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT / 2);
+	context.fillRect(
+		0,
+		0,
+		WINDOW_WIDTH,
+		horizon
+	);
 
-	// Floor
+	// Ground.
 	context.fillStyle = "#454039";
 	context.fillRect(
 		0,
-		WINDOW_HEIGHT / 2,
+		horizon,
 		WINDOW_WIDTH,
-		WINDOW_HEIGHT / 2
+		WINDOW_HEIGHT - horizon
 	);
-
-	if (backgroundImage.complete && backgroundImage.naturalWidth > 0) {
-		context.drawImage(backgroundImage, 0, 0);
-	}
 
 	// Uncomment these for the top-down debugging view:
 	// map.render(context);
