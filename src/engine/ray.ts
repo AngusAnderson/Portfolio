@@ -38,6 +38,8 @@ export class Ray {
 	public distance: number;
 	public color: number;
 
+	public hitVertical: boolean = false;
+
 	private player: Player;
 	private map: GameMap;
 
@@ -210,11 +212,13 @@ export class Ray {
 			this.wallHitY = this.horizontalHit.y;
 			this.distance = horizontalDistance;
 			this.color = 160;
+			this.hitVertical = false;
 		} else {
 			this.wallHitX = this.verticalHit.x;
 			this.wallHitY = this.verticalHit.y;
 			this.distance = verticalDistance;
 			this.color = 255;
+			this.hitVertical = true;
 		}
 
 		this.distance *= Math.cos(

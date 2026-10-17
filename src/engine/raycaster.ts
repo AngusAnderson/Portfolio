@@ -1,18 +1,42 @@
-import { FOV, NUM_RAYS, RES, TILESIZE, WINDOW_HEIGHT } from "../settings";
+import {
+	FOV,
+	NUM_RAYS,
+	RES,
+	TILESIZE,
+	WINDOW_HEIGHT,
+} from "../settings";
+
 import type { GameMap } from "./map";
 import type { Player } from "./player";
 import { Ray } from "./ray";
 
 export class Raycaster {
-	public rays: Ray[];
+	public rays: Ray[] = [];
 
 	private player: Player;
 	private map: GameMap;
 
+	private wallTexture: HTMLImageElement;
+	private textureLoaded: boolean = false;
+
 	constructor(player: Player, map: GameMap) {
-		this.rays = [];
 		this.player = player;
 		this.map = map;
+
+		this.wallTexture = new Image();
+
+		this.wallTexture.onload = () => {
+			this.textureLoaded = true;
+		};
+
+		this.wallTexture.onerror = () => {
+			console.error(
+				"Could not load the wall texture:",
+				this.wallTexture.src
+			);
+		};
+
+		this.wallTexture.src = `${import.meta.env.BASE_URL}assets/textures/castle-stone.png`;
 	}
 
 	public castAllRays(): void {
@@ -31,33 +55,97 @@ export class Raycaster {
 	}
 
 	public render(context: CanvasRenderingContext2D): void {
-	const projectionDistance = 415;
+		context.save();
+		context.imageSmoothingEnabled = false;
 
-	for (let i = 0; i < this.rays.length; i++) {
-		const ray = this.rays[i];
+		for (let i = 0; i < this.rays.length; i++) {
+			const ray = this.rays[i];
 
-		const distance = Math.max(ray.distance, 0.001);
-		const lineHeight =
-			(TILESIZE / distance) * projectionDistance;
+			if (!Number.isFinite(ray.distance)) {
+				continue;
+			}
 
-		const jumpOffset =
-			(this.player.jumpHeight / distance) * projectionDistance;
+			const distance = Math.max(ray.distance, 0.001);
+			const projectionDistance = 415;
 
-		const drawBegin =
-			WINDOW_HEIGHT / 2 -
-			lineHeight / 2 +
-			jumpOffset;
+			const lineHeight =
+				(TILESIZE / distance) * projectionDistance;
 
-		const colour = Math.round(ray.color);
+			const jumpOffset =
+				(this.player.jumpHeight / distance) * projectionDistance;
 
-		context.fillStyle = `rgb(${colour}, ${colour}, ${colour})`;
+			const drawBegin =
+				WINDOW_HEIGHT / 2 - lineHeight / 2 + jumpOffset;
 
-		context.fillRect(
-			i * RES,
-			drawBegin,
-			RES,
-			lineHeight
-		);
+			const screenX = i * RES;
+			const brightness = Math.max(
+				0,
+				Math.min(1, ray.color / 255)
+			);
+
+			if (!this.textureLoaded) {
+				const shade = Math.round(brightness * 255);
+
+				context.fillStyle =
+					`rgb(${shade}, ${shade}, ${shade})`;
+
+				context.fillRect(
+					screenX,
+					drawBegin,
+					RES,
+					lineHeight
+				);
+
+				continue;
+			}
+
+			const wallCoordinate = ray.hitVertical
+				? ray.wallHitY
+				: ray.wallHitX;
+
+			const positionInTile =
+				((wallCoordinate % TILESIZE) + TILESIZE) % TILESIZE;
+
+			const texturePosition = positionInTile / TILESIZE;
+			const textureWidth = this.wallTexture.naturalWidth;
+			const textureHeight = this.wallTexture.naturalHeight;
+
+			let textureX = Math.min(
+				textureWidth - 1,
+				Math.floor(texturePosition * textureWidth)
+			);
+
+			if (
+				(ray.hitVertical && ray.isFacingRight) ||
+				(!ray.hitVertical && ray.isFacingUp)
+			) {
+				textureX = textureWidth - textureX - 1;
+			}
+
+			context.drawImage(
+				this.wallTexture,
+
+				textureX,
+				0,
+				1,
+				textureHeight,
+
+				screenX,
+				drawBegin,
+				RES,
+				lineHeight
+			);
+
+			context.fillStyle = `rgba(0, 0, 0, ${1 - brightness})`;
+
+			context.fillRect(
+				screenX,
+				drawBegin,
+				RES,
+				lineHeight
+			);
+		}
+
+		context.restore();
 	}
-}
 }
