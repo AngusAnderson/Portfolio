@@ -4,6 +4,7 @@ import { WINDOW_HEIGHT, WINDOW_WIDTH } from "./settings";
 import { GameMap } from "./engine/map";
 import { Player } from "./engine/player";
 import { Raycaster } from "./engine/raycaster";
+import { EnvironmentSystem } from "./engine/environment";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 
@@ -23,6 +24,9 @@ canvas.height = WINDOW_HEIGHT;
 const map = new GameMap();
 const player = new Player();
 const raycaster = new Raycaster(player, map);
+
+const environment = new EnvironmentSystem();
+environment.update(player, map);
 
 window.addEventListener("keydown", (event: KeyboardEvent) => {
 	player.handleKeyDown(event);
@@ -68,6 +72,7 @@ function gameLoop(timestamp: number): void {
 	previousTime = timestamp;
 
 	player.update(map, deltaTime);
+	environment.update(player, map);
 	raycaster.castAllRays();
 
 	if (!context) {
@@ -102,6 +107,49 @@ function gameLoop(timestamp: number): void {
 	// player.render(context);
 
 	raycaster.render(context);
+
+	const currentEnvironment = environment.current;
+
+	context.save();
+
+	context.fillStyle = "rgba(0, 0, 0, 0.75)";
+	context.fillRect(6, 6, 290, 78);
+
+	context.fillStyle = "#ffffff";
+	context.font = "10px monospace";
+	context.textBaseline = "top";
+
+	context.fillText(
+		`Area: ${currentEnvironment.zoneName}`,
+		12,
+		12
+	);
+
+	context.fillText(
+		`Location: ${currentEnvironment.kind}`,
+		12,
+		26
+	);
+
+	context.fillText(
+		`Sheltered: ${currentEnvironment.sheltered}`,
+		12,
+		40
+	);
+
+	context.fillText(
+		`Rain exposure: ${currentEnvironment.exposedToRain}`,
+		12,
+		54
+	);
+
+	context.fillText(
+		`Cover: ${currentEnvironment.shelterSource}`,
+		12,
+		68
+	);
+
+	context.restore();
 
 	requestAnimationFrame(gameLoop);
 }
