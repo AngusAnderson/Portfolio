@@ -6,7 +6,7 @@ import {
 	WINDOW_HEIGHT,
 } from "../settings";
 
-import type { GameMap } from "./map";
+import type { GameMap, Ramp, SuspendedPlatform } from "./map";
 import type { Player } from "./player";
 
 type WallSegment = {
@@ -15,6 +15,13 @@ type WallSegment = {
 	height: number;
 	texturePosition: number;
 	verticalSide: boolean;
+};
+
+type RampHit = {
+	distance: number;
+	x: number;
+	y: number;
+	isTop: boolean;
 };
 
 export class Raycaster {
@@ -200,8 +207,7 @@ export class Raycaster {
 
 	// MARK: - Rendering
 	public render(context: CanvasRenderingContext2D): void {
-		const cameraHeight =
-			TILESIZE / 2 + this.player.jumpHeight;
+		const cameraHeight = TILESIZE / 2 + this.player.elevation;
 
 		context.save();
 
@@ -233,6 +239,8 @@ export class Raycaster {
 				);
 			}
 		}
+
+		this.renderRamps(context, cameraHeight);
 
 		context.restore();
 	}
@@ -381,5 +389,441 @@ export class Raycaster {
 				bottom - top
 			);
 		}
+	}
+
+		// MARK: - Render Ramps
+	private renderRamps(
+		context: CanvasRenderingContext2D,
+		cameraHeight: number
+	): void {
+		if (
+			this.map.ramps.length === 0 &&
+			this.map.suspendedPlatforms.length === 0
+		) {
+			return;
+		}
+
+		const forwardX = Math.cos(this.player.rotationAngle);
+		const forwardY = Math.sin(this.player.rotationAngle);
+
+		const rightX = -forwardY;
+		const rightY = forwardX;
+
+		const halfFovTangent = Math.tan(FOV / 2);
+		const horizon = this.horizonY;
+
+		for (let column = 0; column < NUM_RAYS; column++) {
+			const cameraX =
+				2 * ((column + 0.5) / NUM_RAYS) - 1;
+
+			const directionX =
+				forwardX + rightX * cameraX * halfFovTangent;
+
+			const directionY =
+				forwardY + rightY * cameraX * halfFovTangent;
+
+			const walls = this.columns[column] ?? [];
+
+			for (let screenY = 0; screenY < WINDOW_HEIGHT; screenY++) {
+				const directionZ =
+					(horizon - (screenY + 0.5)) /
+					this.projectionDistance;
+
+				let nearestHit: RampHit | null = null;
+
+				for (const platform of this.map.suspendedPlatforms) {
+					const hit = this.intersectSuspendedPlatform(
+						platform,
+						directionX,
+						directionY,
+						directionZ,
+						cameraHeight
+					);
+
+					if (
+						hit &&
+						(!nearestHit ||
+							hit.distance < nearestHit.distance)
+					) {
+						nearestHit = hit;
+					}
+				}
+
+				for (const ramp of this.map.ramps) {
+					const hit = this.intersectRamp(
+						ramp,
+						directionX,
+						directionY,
+						directionZ,
+						cameraHeight
+					);
+
+					if (
+						hit &&
+						(!nearestHit ||
+							hit.distance < nearestHit.distance)
+					) {
+						nearestHit = hit;
+					}
+				}
+
+				if (!nearestHit) {
+					continue;
+				}
+
+				if (
+					this.wallBlocksRamp(
+						walls,
+						nearestHit.distance,
+						directionZ,
+						cameraHeight
+					)
+				) {
+					continue;
+				}
+
+				// Using a checkboard pattern as a temporary texture. You snooze you lose.
+				const checkerSize = TILESIZE / 4;
+
+				const checker =
+					(
+						Math.floor(nearestHit.x / checkerSize) +
+						Math.floor(nearestHit.y / checkerSize)
+					) % 2;
+
+				const baseColour = nearestHit.isTop
+					? (checker === 0 ? 155 : 115)
+					: 85;
+
+				const brightness = Math.max(
+					0.2,
+					Math.min(1, 100 / nearestHit.distance)
+				);
+
+				const shade = Math.round(
+					baseColour * brightness
+				);
+
+				context.fillStyle =
+					`rgb(${shade}, ${shade}, ${shade})`;
+
+				context.fillRect(
+					column * RES,
+					screenY,
+					RES,
+					1
+				);
+			}
+		}
+	}
+
+	// MARK: - Ramp Surface Intersection
+	private intersectRamp(
+		ramp: Ramp,
+		directionX: number,
+		directionY: number,
+		directionZ: number,
+		cameraHeight: number
+	): RampHit | null {
+		const epsilon = 0.000001;
+
+		if (ramp.width <= 0 || ramp.depth <= 0) {
+			return null;
+		}
+
+		const rise = ramp.endHeight - ramp.startHeight;
+
+		let slopeX = 0;
+		let slopeY = 0;
+
+		let cornerHeight = ramp.startHeight;
+
+		switch (ramp.direction) {
+			case "north":
+				slopeY = -rise / ramp.depth;
+				cornerHeight = ramp.endHeight;
+				break;
+
+			case "south":
+				slopeY = rise / ramp.depth;
+				break;
+
+			case "east":
+				slopeX = rise / ramp.width;
+				break;
+
+			case "west":
+				slopeX = -rise / ramp.width;
+				cornerHeight = ramp.endHeight;
+				break;
+		}
+
+		const minX = ramp.x;
+		const maxX = ramp.x + ramp.width;
+		const minY = ramp.y;
+		const maxY = ramp.y + ramp.depth;
+
+		let nearest: RampHit | null = null;
+
+		const considerHit = (
+			distance: number,
+			isTop: boolean
+		): void => {
+			if (
+				!Number.isFinite(distance) ||
+				distance <= epsilon
+			) {
+				return;
+			}
+
+			const x =
+				this.player.x + directionX * distance;
+
+			const y =
+				this.player.y + directionY * distance;
+
+			if (
+				x < minX - epsilon ||
+				x > maxX + epsilon ||
+				y < minY - epsilon ||
+				y > maxY + epsilon
+			) {
+				return;
+			}
+
+			const z =
+				cameraHeight + directionZ * distance;
+
+			const surfaceHeight =
+				cornerHeight +
+				slopeX * (x - ramp.x) +
+				slopeY * (y - ramp.y);
+
+			if (!isTop) {
+				if (
+					z < -epsilon ||
+					z > surfaceHeight + epsilon
+				) {
+					return;
+				}
+			}
+
+			if (!nearest || distance < nearest.distance) {
+				nearest = {
+					distance,
+					x,
+					y,
+					isTop,
+				};
+			}
+		};
+
+		const denominator =
+			directionZ -
+			slopeX * directionX -
+			slopeY * directionY;
+
+		if (Math.abs(denominator) > epsilon) {
+			const heightAtCameraXY =
+				cornerHeight +
+				slopeX * (this.player.x - ramp.x) +
+				slopeY * (this.player.y - ramp.y);
+
+			const distance =
+				(heightAtCameraXY - cameraHeight) /
+				denominator;
+
+			considerHit(distance, true);
+		}
+
+		if (Math.abs(directionX) > epsilon) {
+			considerHit(
+				(minX - this.player.x) / directionX,
+				false
+			);
+
+			considerHit(
+				(maxX - this.player.x) / directionX,
+				false
+			);
+		}
+
+		if (Math.abs(directionY) > epsilon) {
+			considerHit(
+				(minY - this.player.y) / directionY,
+				false
+			);
+
+			considerHit(
+				(maxY - this.player.y) / directionY,
+				false
+			);
+		}
+
+		return nearest;
+	}
+
+	// MARK: - Ramp Occlusion
+	private wallBlocksRamp(
+		walls: WallSegment[],
+		rampDistance: number,
+		directionZ: number,
+		cameraHeight: number
+	): boolean {
+		const epsilon = 0.000001;
+
+		for (const wall of walls) {
+			if (wall.entryDistance >= rampDistance) {
+				break;
+			}
+
+			let verticalEntry: number;
+			let verticalExit: number;
+
+			if (Math.abs(directionZ) < epsilon) {
+				if (
+					cameraHeight < 0 ||
+					cameraHeight > wall.height
+				) {
+					continue;
+				}
+
+				verticalEntry = -Infinity;
+				verticalExit = Infinity;
+			} else {
+				const groundDistance =
+					-cameraHeight / directionZ;
+
+				const topDistance =
+					(wall.height - cameraHeight) /
+					directionZ;
+
+				verticalEntry = Math.min(
+					groundDistance,
+					topDistance
+				);
+
+				verticalExit = Math.max(
+					groundDistance,
+					topDistance
+				);
+			}
+
+			const entry = Math.max(
+				wall.entryDistance,
+				verticalEntry,
+				0
+			);
+
+			const exit = Math.min(
+				wall.exitDistance,
+				verticalExit
+			);
+
+			if (
+				entry <= exit &&
+				entry < rampDistance - epsilon
+			) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	// MARK: - Suspended Platform Intersection
+	private intersectSuspendedPlatform(
+		platform: SuspendedPlatform,
+		directionX: number,
+		directionY: number,
+		directionZ: number,
+		cameraHeight: number
+	): RampHit | null {
+		const epsilon = 0.000001;
+
+		if (
+			platform.width <= 0 ||
+			platform.depth <= 0 ||
+			platform.topHeight <= platform.bottomHeight
+		) {
+			return null;
+		}
+
+		const origins = [
+			this.player.x,
+			this.player.y,
+			cameraHeight,
+		];
+
+		const directions = [
+			directionX,
+			directionY,
+			directionZ,
+		];
+
+		const minimums = [
+			platform.x,
+			platform.y,
+			platform.bottomHeight,
+		];
+
+		const maximums = [
+			platform.x + platform.width,
+			platform.y + platform.depth,
+			platform.topHeight,
+		];
+
+		let entryDistance = -Infinity;
+		let exitDistance = Infinity;
+
+		for (let axis = 0; axis < 3; axis++) {
+			const origin = origins[axis]!;
+			const direction = directions[axis]!;
+			const minimum = minimums[axis]!;
+			const maximum = maximums[axis]!;
+
+			if (Math.abs(direction) < epsilon) {
+				if (origin < minimum || origin > maximum) {
+					return null;
+				}
+
+				continue;
+			}
+
+			const first = (minimum - origin) / direction;
+			const second = (maximum - origin) / direction;
+
+			const near = Math.min(first, second);
+			const far = Math.max(first, second);
+
+			entryDistance = Math.max(entryDistance, near);
+			exitDistance = Math.min(exitDistance, far);
+
+			if (entryDistance > exitDistance) {
+				return null;
+			}
+		}
+
+		if (exitDistance <= epsilon) {
+			return null;
+		}
+
+		const distance = entryDistance > epsilon
+			? entryDistance
+			: exitDistance;
+
+		if (!Number.isFinite(distance)) {
+			return null;
+		}
+
+		const hitZ = cameraHeight + directionZ * distance;
+
+		return {
+			distance,
+			x: this.player.x + directionX * distance,
+			y: this.player.y + directionY * distance,
+			isTop:
+				Math.abs(hitZ - platform.topHeight) < 0.001,
+		};
 	}
 }

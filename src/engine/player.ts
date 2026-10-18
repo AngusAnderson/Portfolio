@@ -1,5 +1,5 @@
 import {TILESIZE} from "../settings";
-import type { GameMap } from "./map";
+import { PLAYER_SPAWN, type GameMap } from "./map";
 
 export class Player {
 	public x: number;
@@ -32,16 +32,26 @@ export class Player {
 	public pitchSensitivity: number = 0.002;
 	public maxPitch: number = 45 * (Math.PI / 180);
 
+	// Elevation
+	public elevation: number = 0;
+	public grounded: boolean = true;
+	public bodyHeight: number = 24;
+
+	private readonly maxStepHeight: number = 2;
+	private readonly groundTolerance: number = 0.01;
+
 	constructor() {
-		this.x = 7.5 * TILESIZE;
-		this.y = 8.5 * TILESIZE;
+		this.x = PLAYER_SPAWN.x;
+		this.y = PLAYER_SPAWN.y;
+		this.rotationAngle = PLAYER_SPAWN.rotationAngle;
+
+		
 
 		this.radius = 3;
 
 		this.turnDirection = 0;
 		this.moveDirection = 0;
 		this.strafeDirection = 0;
-		this.rotationAngle = -Math.PI / 2;
 
 		this.moveSpeed = 4;
 		this.rotationSpeed = 4 * (Math.PI / 180);
@@ -61,7 +71,7 @@ export class Player {
 	if (
 		event.code === "Space" &&
 		!this.pressedKeys.has("Space") &&
-		this.jumpHeight === 0
+		this.grounded
 	) {
 		this.jumpQueued = true;
 	}
@@ -79,7 +89,7 @@ export class Player {
 		this.moveDirection = 0;
 		this.strafeDirection = 0;
 
-		this.updateJump(deltaTime);
+		this.updateJump(deltaTime, map);
 
 		if (this.pressedKeys.has("ArrowRight") || this.pressedKeys.has("KeyD")) {
 			this.strafeDirection = 1;
@@ -133,12 +143,14 @@ export class Player {
 
 			if (this.canMoveTo(nextX, this.y, map)) {
 				this.x = nextX;
+				this.followGround(map);
 			}
 
 			const nextY = this.y + stepY;
 
 			if (this.canMoveTo(this.x, nextY, map)) {
 				this.y = nextY;
+				this.followGround(map);
 			}
 		}
 
@@ -155,6 +167,9 @@ export class Player {
 				this.y = nextY;
 			}
 		}
+
+		// this.jumpHeight = Math.max(0, this.elevation - map.getGroundHeightAt(this.x, this.y));
+		this.updateJumpHeight(map);
 	}
 
 	// MARK: - Rendering
@@ -196,35 +211,184 @@ export class Player {
 		);
 	}
 
-	private canMoveTo(x: number, y: number, map: GameMap): boolean {
+	// MARK: - Collision Detection
+	private canMoveTo(
+		x: number,
+		y: number,
+		map: GameMap
+	): boolean {
 		const radius = this.radius;
 
-		return (
+		const clearOfWalls =
 			map.hasWallAt(x - radius, y - radius) === 0 &&
 			map.hasWallAt(x + radius, y - radius) === 0 &&
 			map.hasWallAt(x - radius, y + radius) === 0 &&
-			map.hasWallAt(x + radius, y + radius) === 0
+			map.hasWallAt(x + radius, y + radius) === 0;
+
+		if (!clearOfWalls) {
+			return false;
+		}
+
+		const allowedRise = this.grounded
+			? this.maxStepHeight
+			: this.groundTolerance;
+
+		const supportHeight = map.getSupportHeightAt(
+			x,
+			y,
+			this.elevation,
+			allowedRise
 		);
+
+		// Solid terrain cannot be entered from underneath.
+		if (supportHeight > this.elevation + allowedRise) {
+			return false;
+		}
+
+		let proposedFeet = this.elevation;
+
+		// Allow a grounded player to follow small surface changes.
+		if (
+			this.grounded &&
+			Math.abs(supportHeight - this.elevation) <=
+				this.maxStepHeight
+		) {
+			proposedFeet = supportHeight;
+		}
+
+		const proposedHead = proposedFeet + this.bodyHeight;
+
+		for (const platform of map.getSuspendedPlatformsAt(x, y)) {
+			const overlapsSlab =
+				proposedFeet <
+					platform.topHeight - this.groundTolerance &&
+				proposedHead >
+					platform.bottomHeight + this.groundTolerance;
+
+			if (overlapsSlab) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
-	private updateJump(deltaTime: number): void {
-		if (this.jumpQueued && this.jumpHeight === 0) {
+	private updateJump(
+		deltaTime: number,
+		map: GameMap
+	): void {
+		if (this.jumpQueued && this.grounded) {
 			this.verticalVelocity = this.jumpSpeed;
+			this.grounded = false;
 		}
 
 		this.jumpQueued = false;
 
-		if (this.jumpHeight > 0 || this.verticalVelocity > 0) {
-			this.jumpHeight +=
+		if (!this.grounded) {
+			const previousFeet = this.elevation;
+			const previousHead =
+				previousFeet + this.bodyHeight;
+
+			let nextFeet =
+				this.elevation +
 				this.verticalVelocity * deltaTime -
 				0.5 * this.gravity * deltaTime * deltaTime;
 
-			this.verticalVelocity -= this.gravity * deltaTime;
+			this.verticalVelocity -=
+				this.gravity * deltaTime;
 
-			if (this.jumpHeight <= 0) {
-				this.jumpHeight = 0;
-				this.verticalVelocity = 0;
+			// Stop upward movement at the nearest underside.
+			if (nextFeet > previousFeet) {
+				let lowestCeiling = Infinity;
+
+				for (
+					const platform of
+					map.getSuspendedPlatformsAt(this.x, this.y)
+				) {
+					const crossesUnderside =
+						previousHead <=
+							platform.bottomHeight +
+								this.groundTolerance &&
+						nextFeet + this.bodyHeight >=
+							platform.bottomHeight;
+
+					if (crossesUnderside) {
+						lowestCeiling = Math.min(
+							lowestCeiling,
+							platform.bottomHeight
+						);
+					}
+				}
+
+				if (Number.isFinite(lowestCeiling)) {
+					nextFeet =
+						lowestCeiling - this.bodyHeight;
+
+					this.verticalVelocity = 0;
+				}
 			}
+
+			// Only surfaces beneath the previous feet position
+			// are eligible landing surfaces.
+			const supportHeight = map.getSupportHeightAt(
+				this.x,
+				this.y,
+				previousFeet,
+				this.groundTolerance
+			);
+
+			if (
+				nextFeet <= previousFeet &&
+				nextFeet <= supportHeight
+			) {
+				nextFeet = supportHeight;
+				this.verticalVelocity = 0;
+				this.grounded = true;
+			}
+
+			this.elevation = nextFeet;
+		}
+
+		this.updateJumpHeight(map);
+	}
+
+	private updateJumpHeight(map: GameMap): void {
+		const supportHeight = map.getSupportHeightAt(
+			this.x,
+			this.y,
+			this.elevation,
+			this.groundTolerance
+		);
+
+		this.jumpHeight = Math.max(
+			0,
+			this.elevation - supportHeight
+		);
+	}
+
+	private followGround(map: GameMap): void {
+		if (!this.grounded) {
+			return;
+		}
+
+		const supportHeight = map.getSupportHeightAt(
+			this.x,
+			this.y,
+			this.elevation,
+			this.maxStepHeight
+		);
+
+		const heightDifference =
+			supportHeight - this.elevation;
+
+		if (
+			heightDifference >= -this.maxStepHeight &&
+			heightDifference <= this.maxStepHeight
+		) {
+			this.elevation = supportHeight;
+		} else {
+			this.grounded = false;
+			this.verticalVelocity = 0;
 		}
 	}
 }
