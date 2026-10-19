@@ -5,6 +5,7 @@ import { GameMap } from "./engine/map";
 import { Player } from "./engine/player";
 import { Raycaster } from "./engine/raycaster";
 import { EnvironmentSystem } from "./engine/environment";
+import { RainAudio } from "./engine/audio";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 
@@ -28,6 +29,9 @@ const raycaster = new Raycaster(player, map);
 const environment = new EnvironmentSystem();
 environment.update(player, map);
 
+const rainAudio = new RainAudio();
+rainAudio.update(environment.current, player);
+
 window.addEventListener("keydown", (event: KeyboardEvent) => {
 	player.handleKeyDown(event);
 });
@@ -39,6 +43,11 @@ window.addEventListener("keyup", (event: KeyboardEvent) => {
 let previousTime: number | null = null;
 
 canvas.addEventListener("click", async () => {
+	void rainAudio.start().catch((error: unknown) => {
+		console.error('Could not start rain audio:', error);
+	});
+	
+	
 	if (document.pointerLockElement === canvas) {
 		return;
 	}
@@ -73,6 +82,7 @@ function gameLoop(timestamp: number): void {
 
 	player.update(map, deltaTime);
 	environment.update(player, map);
+	rainAudio.update(environment.current, player);
 	raycaster.castAllRays();
 
 	if (!context) {
@@ -152,6 +162,53 @@ function gameLoop(timestamp: number): void {
 	context.restore();
 
 	requestAnimationFrame(gameLoop);
+}
+
+document.addEventListener("visibilitychange", () => {
+	void rainAudio
+		.setPageVisible(!document.hidden)
+		.catch((error: unknown) => {
+			console.warn(
+				"Could not change audio playback state. Click the game to resume.",
+				error
+			);
+		});
+});
+
+const muteButton =
+	document.querySelector<HTMLButtonElement>("#rain-mute");
+
+const volumeSlider =
+	document.querySelector<HTMLInputElement>("#rain-volume");
+
+if (muteButton) {
+	muteButton.addEventListener("click", () => {
+		rainAudio.setMuted(!rainAudio.isMuted);
+
+		muteButton.textContent = rainAudio.isMuted
+			? "Unmute rain"
+			: "Mute rain";
+
+		muteButton.setAttribute(
+			"aria-pressed",
+			String(rainAudio.isMuted)
+		);
+
+		void rainAudio.start().catch((error: unknown) => {
+			console.error(
+				"Could not start rain audio:",
+				error
+			);
+		});
+	});
+}
+
+if (volumeSlider) {
+	volumeSlider.value = String(rainAudio.volume);
+
+	volumeSlider.addEventListener("input", () => {
+		rainAudio.setVolume(Number(volumeSlider.value));
+	});
 }
 
 requestAnimationFrame(gameLoop);

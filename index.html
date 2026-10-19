@@ -8,5 +8,25 @@
 	<body>
 		<canvas id="game"></canvas>
 		<script type="module" src="/src/main.ts"></script>
+		<div id="audio-controls">
+			<button
+				id="rain-mute"
+				type="button"
+				aria-pressed="false"
+			>
+				Mute Rain
+			</button>
+
+			<label for="rain-volume">Volume</label>
+
+			<input
+				id="rain-volume"
+				type="range"
+				min="0"
+				max="1"
+				step="0.01"
+				value="0.4"
+			/>
+		</div>
 	</body>
 </html>
