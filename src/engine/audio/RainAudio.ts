@@ -1,4 +1,5 @@
 import type { EnvironmentState } from "../environment";
+import type { RainIntensity } from "./rainConfig";
 
 import {
     INDOOR_OPENINGS,
@@ -36,6 +37,7 @@ export class RainAudio {
     private appliedCutoff: number | null = null;
 
     private readonly selectedSource: string;
+    public readonly intensity: RainIntensity;
 
     public get isMuted(): boolean {
         return this.muted;
@@ -46,21 +48,22 @@ export class RainAudio {
     }
 
     constructor() {
-		const sources = RAIN_CONFIG.sources;
+		const tracks = RAIN_CONFIG.sources;
 
 		const index = Math.floor(
-			Math.random() * sources.length
+			Math.random() * tracks.length
 		);
 
-		const selectedSource = sources[index];
+		const selectedTrack = tracks[index];
 
-		if (!selectedSource) {
+		if (!selectedTrack) {
 			throw new Error(
 				"No rain audio sources are configured"
 			);
 		}
 
-		this.selectedSource = selectedSource;
+		this.selectedSource = selectedTrack.source;
+		this.intensity = selectedTrack.intensity;
 	}
 
     public async start(): Promise<void> {
