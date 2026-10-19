@@ -22,3 +22,43 @@ body {
 	image-rendering: pixelated;
   object-fit: contain;
 }
+
+#audio-controls {
+	position: fixed;
+	right: 16px;
+	bottom: 16px;
+	z-index: 20;
+
+	display: flex;
+	align-items: center;
+	gap: 10px;
+
+	padding: 10px 12px;
+
+	color: #eee;
+	background: rgba(15, 15, 18, 0.85);
+	border: 1px solid #555;
+
+	font-family: monospace;
+	font-size: 12px;
+}
+
+#audio-controls button {
+	padding: 6px 10px;
+
+	color: #eee;
+	background: #29292e;
+	border: 1px solid #666;
+
+	font: inherit;
+	cursor: pointer;
+}
+
+#audio-controls button:focus-visible, #audio-controls input:focus-visible {
+	outline: 2px solid #ddd;
+	outline-offset: 3px;
+}
+
+#rain-volume {
+	width: 100px;
+}
