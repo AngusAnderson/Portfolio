@@ -1,143 +1,424 @@
-import type { RainIntensity } from "../audio/rainConfig";
-import type { EnvironmentState } from "../environment";
+import { FOV, TILESIZE } from "../../settings";
 
-import { RAIN_VISUAL_PRESETS, type RainVisualPreset } from "./rainPresents";
+import type { RainIntensity } from "../audio/rainConfig";
+import type { GameMap } from "../map";
+import type { Player } from "../player";
+
+import {
+	RAIN_VISUAL_PRESETS,
+	type RainVisualPreset,
+} from "./rainPresents";
 
 type RainDrop = {
-    x: number;
-    y: number;
+	x: number;
+	y: number;
+	z: number;
 
-    speedMultiplier: number;
-    lengthMultiplier: number;
+	speedMultiplier: number;
+	lengthMultiplier: number;
+};
+
+type RainCamera = {
+	x: number;
+	y: number;
+	rotationAngle: number;
+	cameraHeight: number;
+	horizonY: number;
+	projectionDistance: number;
+};
+
+type RainView = {
+	getRainCamera(): RainCamera;
+
+	isRainVisibleAt(
+		screenX: number,
+		screenY: number,
+		rainDepth: number
+	): boolean;
+};
+
+type ProjectedPoint = {
+	x: number;
+	y: number;
+	depth: number;
 };
 
 export class RainRenderer {
-    private readonly preset: RainVisualPreset;
-    private readonly drops: RainDrop[] = [];
+	private readonly preset: RainVisualPreset;
+	private readonly drops: RainDrop[] = [];
+	private readonly map: GameMap;
+	private readonly player: Player;
 
-    private width: number;
-    private height: number;
+	private readonly radius = TILESIZE * 8;
 
-    private visiblility: number = 0;
+	private readonly worldScale = TILESIZE / 128;
 
-    constructor(
-        intensity: RainIntensity,
-        width: number,
-        height: number,
-    ) {
-        this.preset = RAIN_VISUAL_PRESETS[intensity];
+	private width: number;
+	private height: number;
 
-        this.width = Math.max(1, width);
-        this.height = Math.max(1, height);
+	constructor(
+		intensity: RainIntensity,
+		map: GameMap,
+		player: Player,
+		width: number,
+		height: number
+	) {
+		this.preset = RAIN_VISUAL_PRESETS[intensity];
+		this.map = map;
+		this.player = player;
 
-        this.createDrops();
-    }
+		this.width = Math.max(1, width);
+		this.height = Math.max(1, height);
 
-    public update(
-		deltaTime: number,
-		environment: Readonly<EnvironmentState>
-	): void {
+		this.createDrops();
+	}
+
+	public update(deltaTime: number): void {
 		const dt = Number.isFinite(deltaTime)
 			? Math.max(0, Math.min(deltaTime, 0.05))
 			: 0;
 
-		const targetVisibility = environment.exposedToRain
-			? 1
-			: 0;
-
-		const blend = 1 - Math.exp(-12 * dt);
-
-		this.visiblility +=
-			(targetVisibility - this.visiblility) * blend;
-
 		for (const drop of this.drops) {
 			drop.x +=
 				this.preset.windSpeed *
+				this.worldScale *
 				drop.speedMultiplier *
 				dt;
 
-			drop.y +=
+			drop.z -=
 				this.preset.fallSpeed *
+				this.worldScale *
 				drop.speedMultiplier *
 				dt;
 
-			if (drop.y > this.height + this.margin) {
-				drop.y = -this.margin;
-				drop.x = Math.random() * this.width;
-			}
+			const outsideRainVolume =
+				Math.abs(drop.x - this.player.x) > this.radius ||
+				Math.abs(drop.y - this.player.y) > this.radius;
 
-			if (drop.x < -this.margin) {
-				drop.x = this.width + this.margin;
-			} else if (drop.x > this.width + this.margin) {
-				drop.x = -this.margin;
+			const landed =
+				drop.z <= this.getLandingHeight(
+					drop.x,
+					drop.y
+				);
+
+			if (outsideRainVolume || landed) {
+				this.resetDrop(drop, false);
 			}
 		}
 	}
 
-    public render(context: CanvasRenderingContext2D): void {
-        if (this.visiblility < 0.01) {
-            return;
-        }
+	public render(
+		context: CanvasRenderingContext2D,
+		view: RainView
+	): void {
+		const camera = view.getRainCamera();
 
-        context.save();
+		context.save();
 
-        context.globalCompositeOperation = 'source-over';
-        context.globalAlpha = this.preset.opacity * this.visiblility;
+		context.globalCompositeOperation = "source-over";
+		context.globalAlpha = this.preset.opacity;
+		context.fillStyle = "#b8c8d8";
 
-        context.strokeStyle = '#b8c8d8';
-        context.lineWidth = 1;
-        context.lineCap = 'butt';
+		for (const drop of this.drops) {
+			const length =
+				this.preset.streakLenth *
+				this.worldScale *
+				drop.lengthMultiplier;
 
-        context.beginPath();
+			const endX =
+				drop.x +
+				length *
+				(this.preset.windSpeed / this.preset.fallSpeed);
 
-        for (const drop of this.drops) {
-            const length = this.preset.streakLenth * drop.lengthMultiplier;
+			const endZ = drop.z - length;
 
-            const horizontalLength = length * (this.preset.windSpeed / this.preset.fallSpeed);
+			const start = this.project(
+				drop.x,
+				drop.y,
+				drop.z,
+				camera
+			);
 
-            context.moveTo(drop.x, drop.y);
-            context.lineTo(drop.x + horizontalLength, drop.y + length);
-        }
+			const end = this.project(
+				endX,
+				drop.y,
+				endZ,
+				camera
+			);
 
-        context.stroke();
-        context.restore();
-    }
+			if (!start || !end) {
+				continue;
+			}
 
-    public resize(width: number, height: number): void {
-        this.width = Math.max(1, width);
-        this.height = Math.max(1, height);
+			if (
+				Math.max(start.x, end.x) < 0 ||
+				Math.min(start.x, end.x) >= this.width ||
+				Math.max(start.y, end.y) < 0 ||
+				Math.min(start.y, end.y) >= this.height
+			) {
+				continue;
+			}
 
-        this.createDrops();
-    }
+			const steps = Math.max(
+				1,
+				Math.ceil(
+					Math.max(
+						Math.abs(end.x - start.x),
+						Math.abs(end.y - start.y)
+					)
+				)
+			);
 
-    private get margin(): number {
-        return this.preset.streakLenth * 2;
-    }
+			let lastPixelX = -1;
+			let lastPixelY = -1;
 
-    private createDrops(): void {
-        this.drops.length = 0;
+			for (let step = 0; step <= steps; step++) {
+				const t = step / steps;
 
-        const referenceArea = 480 * 320;
-        const areaScale = (this.width * this.height) / referenceArea;
+				const screenX = Math.floor(
+					start.x + (end.x - start.x) * t
+				);
 
-        const count = Math.min(
-            600,
-            Math.max(
-                1,
-                Math.round(
-                    this.preset.dropCount * areaScale
-                )
-            )
-        );
+				const screenY = Math.floor(
+					start.y + (end.y - start.y) * t
+				);
 
-        for (let _ = 0; _ < count; _++) {
-            this.drops.push({
-                x: Math.random() * this.width,
-                y: Math.random() * this.height,
-                
-                speedMultiplier: 0.75 + Math.random() * 0.5,
-                lengthMultiplier: 0.7 + Math.random() * 0.6
-            });
-        }
-    }
+				if (
+					screenX < 0 ||
+					screenX >= this.width ||
+					screenY < 0 ||
+					screenY >= this.height
+				) {
+					continue;
+				}
+
+				if (
+					screenX === lastPixelX &&
+					screenY === lastPixelY
+				) {
+					continue;
+				}
+
+				lastPixelX = screenX;
+				lastPixelY = screenY;
+
+				const inverseDepth =
+					(1 - t) / start.depth +
+					t / end.depth;
+
+				const depth = 1 / inverseDepth;
+
+				const worldT =
+					(t / end.depth) / inverseDepth;
+
+				const worldX =
+					drop.x + (endX - drop.x) * worldT;
+
+				const worldZ =
+					drop.z + (endZ - drop.z) * worldT;
+
+				if (
+					!this.canRainExistAt(
+						worldX,
+						drop.y,
+						worldZ
+					)
+				) {
+					continue;
+				}
+
+				if (
+					!view.isRainVisibleAt(
+						screenX,
+						screenY,
+						depth
+					)
+				) {
+					continue;
+				}
+
+				context.fillRect(
+					screenX,
+					screenY,
+					1,
+					1
+				);
+			}
+		}
+
+		context.restore();
+	}
+
+	public resize(width: number, height: number): void {
+		this.width = Math.max(1, width);
+		this.height = Math.max(1, height);
+
+		this.createDrops();
+	}
+
+	private project(
+		x: number,
+		y: number,
+		z: number,
+		camera: RainCamera
+	): ProjectedPoint | null {
+		const relativeX = x - camera.x;
+		const relativeY = y - camera.y;
+
+		const forwardX = Math.cos(camera.rotationAngle);
+		const forwardY = Math.sin(camera.rotationAngle);
+
+		const depth =
+			relativeX * forwardX +
+			relativeY * forwardY;
+
+		if (depth <= TILESIZE * 0.15) {
+			return null;
+		}
+
+		const sideways =
+			relativeX * -forwardY +
+			relativeY * forwardX;
+
+		const horizontalProjection =
+			this.width / (2 * Math.tan(FOV / 2));
+
+		return {
+			x:
+				this.width / 2 +
+				(sideways / depth) * horizontalProjection,
+
+			y:
+				camera.horizonY -
+				((z - camera.cameraHeight) / depth) *
+					camera.projectionDistance,
+
+			depth,
+		};
+	}
+
+	private canRainExistAt(
+		x: number,
+		y: number,
+		z: number
+	): boolean {
+		const row = Math.floor(y / TILESIZE);
+		const column = Math.floor(x / TILESIZE);
+
+		if (
+			row < 0 ||
+			column < 0 ||
+			row >= this.map.grid.length ||
+			column >= (this.map.grid[row]?.length ?? 0)
+		) {
+			return false;
+		}
+
+		if (z <= this.getLandingHeight(x, y)) {
+			return false;
+		}
+
+		let selected:
+			(typeof this.map.environmentZones)[number] | null =
+				null;
+
+		for (const zone of this.map.environmentZones) {
+			const inside =
+				x >= zone.x &&
+				x < zone.x + zone.width &&
+				y >= zone.y &&
+				y < zone.y + zone.depth &&
+				z >= zone.minElevation &&
+				z < zone.maxElevation;
+
+			if (
+				inside &&
+				(!selected || zone.priority > selected.priority)
+			) {
+				selected = zone;
+			}
+		}
+
+		return !(selected?.sheltered ?? false);
+	}
+
+	private getLandingHeight(
+		x: number,
+		y: number
+	): number {
+		let height = Math.max(
+			0,
+			this.map.getGroundHeightAt(x, y),
+			this.map.hasWallAt(x, y) * TILESIZE
+		);
+
+		for (
+			const platform of
+			this.map.getSuspendedPlatformsAt(x, y)
+		) {
+			height = Math.max(
+				height,
+				platform.topHeight
+			);
+		}
+
+		return height;
+	}
+
+	private resetDrop(
+		drop: RainDrop,
+		randomHeight: boolean
+	): void {
+		drop.x =
+			this.player.x +
+			(Math.random() * 2 - 1) * this.radius;
+
+		drop.y =
+			this.player.y +
+			(Math.random() * 2 - 1) * this.radius;
+
+		const ceiling = Math.max(
+			TILESIZE * 6,
+			this.player.elevation + TILESIZE * 6
+		);
+
+		drop.z = randomHeight
+			? Math.random() * ceiling
+			: ceiling;
+	}
+
+	private createDrops(): void {
+		this.drops.length = 0;
+
+		const areaScale = (this.width * this.height) / (480 * 320);
+
+		const count = Math.min(
+			3500,
+			Math.max(
+				1,
+				Math.round(
+					this.preset.dropCount *
+					8 *
+					areaScale
+				)
+			)
+		);
+
+		for (let index = 0; index < count; index++) {
+			const drop: RainDrop = {
+				x: 0,
+				y: 0,
+				z: 0,
+
+				speedMultiplier:
+					0.75 + Math.random() * 0.5,
+
+				lengthMultiplier:
+					0.7 + Math.random() * 0.6,
+			};
+
+			this.resetDrop(drop, true);
+			this.drops.push(drop);
+		}
+	}
 }

@@ -35,9 +35,11 @@ rainAudio.update(environment.current, player);
 
 const rainRenderer = new RainRenderer(
 	rainAudio.intensity,
+	map,
+	player,
 	canvas.width,
 	canvas.height
-)
+);
 
 window.addEventListener("keydown", (event: KeyboardEvent) => {
 	player.handleKeyDown(event);
@@ -90,7 +92,7 @@ function gameLoop(timestamp: number): void {
 	player.update(map, deltaTime);
 	environment.update(player, map);
 	rainAudio.update(environment.current, player);
-	rainRenderer.update(deltaTime, environment.current);
+	rainRenderer.update(deltaTime);
 	raycaster.castAllRays();
 
 	if (!context) {
@@ -125,7 +127,7 @@ function gameLoop(timestamp: number): void {
 	// player.render(context);
 
 	raycaster.render(context);
-	rainRenderer.render(context);
+	rainRenderer.render(context, raycaster);
 
 	const currentEnvironment = environment.current;
 
