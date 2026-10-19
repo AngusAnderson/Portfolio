@@ -1,3 +1,7 @@
+import type {
+	EnvironmentZoneDefinition,
+} from "../environment/types";
+
 // MARK: - Runtime Geometry
 // Note: The coordinates and heights are measured in world units.
 
@@ -97,4 +101,6 @@ export type LevelDefinition = {
 	walls: WallDefinition[];
 	groundSurfaces: GroundSurfaceDefinition[];
 	suspendedPlatforms: SuspendedPlatformDefinition[];
+
+    environmentZones?: EnvironmentZoneDefinition[];
 };

@@ -1,5 +1,7 @@
 import { CASTLE_LEVEL } from "./levels/castle";
 import { buildGrid } from "./gridBuilder";
+import { buildEnvironmentZones } from "../environment/buildZones";
+import type { EnvironmentZone } from "../environment/types";
 
 import {
 	buildGroundSurfaces,
@@ -29,6 +31,8 @@ export class GameMap implements MapGeometry {
 	public ramps: Ramp[];
 	public suspendedPlatforms: SuspendedPlatform[];
 
+    public environmentZones: EnvironmentZone[];
+
 	constructor(level: LevelDefinition = CASTLE_LEVEL) {
 		this.grid = buildGrid(level);
 
@@ -38,6 +42,10 @@ export class GameMap implements MapGeometry {
 
 		this.suspendedPlatforms = buildSuspendedPlatforms(
 			level.suspendedPlatforms
+		);
+
+        this.environmentZones = buildEnvironmentZones(
+			level.environmentZones ?? []
 		);
 	}
 

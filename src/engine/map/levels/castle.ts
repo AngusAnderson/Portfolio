@@ -197,4 +197,74 @@ export const CASTLE_LEVEL: LevelDefinition = {
 			topHeight: 1.25,
 		},
 	],
+
+    environmentZones: [
+		{
+			id: "castle-courtyard",
+			name: "Castle Courtyard",
+
+			x: 5,
+			y: 2,
+			width: 21,
+			depth: 19,
+
+			kind: "outdoor",
+			sheltered: false,
+			priority: 1,
+		},
+		{
+			id: "gate-vestibule",
+			name: "Gate Vestibule",
+
+			x: 14,
+			y: 19,
+			width: 3,
+			depth: 2,
+
+			kind: "indoor",
+			sheltered: true,
+			priority: 10,
+
+			maxElevation: 1,
+		},
+		{
+			id: "keep-gallery",
+			name: "Keep Gallery",
+
+			x: 11,
+			y: 4,
+			width: 9,
+			depth: 5,
+
+			kind: "indoor",
+			sheltered: true,
+			priority: 10,
+		},
+		{
+			id: "left-chamber",
+			name: "Left Chamber",
+
+			x: 7,
+			y: 6,
+			width: 2,
+			depth: 3,
+
+			kind: "indoor",
+			sheltered: true,
+			priority: 10,
+		},
+		{
+			id: "right-chamber",
+			name: "Right Chamber",
+
+			x: 22,
+			y: 6,
+			width: 2,
+			depth: 3,
+
+			kind: "indoor",
+			sheltered: true,
+			priority: 10,
+		},
+	],
 };
