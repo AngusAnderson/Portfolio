@@ -1,4 +1,4 @@
-import { FOV, NUM_RAYS } from "../../settings";
+import { FOV, NUM_RAYS, RES, WINDOW_HEIGHT } from "../../settings";
 
 import type { GameMap } from "../map";
 import type { Player } from "../player";
@@ -12,8 +12,9 @@ import { castColumn } from "./castColumn";
 import { renderWalls } from "./wallRenderer";
 import { renderSurfaces } from "./surfaceRenderer";
 import { WallTexture } from "./textures";
+import { getRainSceneDepth } from "./rainVisibility";
 
-import type { WallSegment } from "./types";
+import type { WallSegment, CameraState } from "./types";
 
 export class Raycaster {
 	private player: Player;
@@ -24,6 +25,9 @@ export class Raycaster {
 	private wallTexture: WallTexture;
 
 	private projectionDistance = 415;
+
+	private rainCamera: CameraState | null = null;
+	private readonly rainDepthCache = new Map<number, number>();
 
 	constructor(player: Player, map: GameMap) {
 		this.player = player;
@@ -41,6 +45,9 @@ export class Raycaster {
 			this.player,
 			this.projectionDistance
 		);
+
+		this.rainCamera = camera;
+		this.rainDepthCache.clear();
 
 		for (let column = 0; column < NUM_RAYS; column++) {
 			const cameraX =
@@ -100,5 +107,57 @@ export class Raycaster {
 			this.player.pitch,
 			this.projectionDistance
 		);
+	}
+
+	public getRainCamera(): CameraState {
+		return this.rainCamera ?? createCameraState(
+			this.player,
+			this.projectionDistance
+		);
+	}
+
+	public isRainVisibleAt(
+		screenX: number,
+		screenY: number,
+		rainDepth: number
+	): boolean {
+		if (
+			!Number.isFinite(screenX) ||
+			!Number.isFinite(screenY) ||
+			!Number.isFinite(rainDepth) ||
+			rainDepth <= 0
+		) {
+			return false;
+		}
+
+		const column = Math.floor(screenX / RES);
+		const row = Math.floor(screenY);
+
+		if (
+			column < 0 ||
+			column >= NUM_RAYS ||
+			row < 0 ||
+			row >= WINDOW_HEIGHT
+		) {
+			return false;
+		}
+
+		const key = row * NUM_RAYS + column;
+
+		let sceneDepth = this.rainDepthCache.get(key);
+
+		if (sceneDepth === undefined) {
+			sceneDepth = getRainSceneDepth(
+				column,
+				row,
+				this.map,
+				this.columns,
+				this.getRainCamera()
+			);
+
+			this.rainDepthCache.set(key, sceneDepth);
+		}
+
+		return rainDepth < sceneDepth - 0.01;
 	}
 }

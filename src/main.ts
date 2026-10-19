@@ -6,6 +6,7 @@ import { Player } from "./engine/player";
 import { Raycaster } from "./engine/raycaster";
 import { EnvironmentSystem } from "./engine/environment";
 import { RainAudio } from "./engine/audio";
+import { RainRenderer } from "./engine/weather";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 
@@ -31,6 +32,14 @@ environment.update(player, map);
 
 const rainAudio = new RainAudio();
 rainAudio.update(environment.current, player);
+
+const rainRenderer = new RainRenderer(
+	rainAudio.intensity,
+	map,
+	player,
+	canvas.width,
+	canvas.height
+);
 
 window.addEventListener("keydown", (event: KeyboardEvent) => {
 	player.handleKeyDown(event);
@@ -83,6 +92,7 @@ function gameLoop(timestamp: number): void {
 	player.update(map, deltaTime);
 	environment.update(player, map);
 	rainAudio.update(environment.current, player);
+	rainRenderer.update(deltaTime);
 	raycaster.castAllRays();
 
 	if (!context) {
@@ -117,6 +127,7 @@ function gameLoop(timestamp: number): void {
 	// player.render(context);
 
 	raycaster.render(context);
+	rainRenderer.render(context, raycaster);
 
 	const currentEnvironment = environment.current;
 

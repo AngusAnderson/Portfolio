@@ -7,13 +7,36 @@ type IndoorOpening = {
     fadeDistance: number;
 };
 
+export type RainIntensity = 'light' | 'medium' | 'high';
+
+export type RainTrack = {
+    source: string;
+    intensity: RainIntensity;
+};
+
 export const  RAIN_CONFIG = {
     sources: [
-		`${import.meta.env.BASE_URL}assets/audio/Rain/1.mp3`,
-		`${import.meta.env.BASE_URL}assets/audio/Rain/2.mp3`,
-		`${import.meta.env.BASE_URL}assets/audio/Rain/3.mp3`,
-		`${import.meta.env.BASE_URL}assets/audio/Rain/4.mp3`,
-	],
+		{
+			source:
+				`${import.meta.env.BASE_URL}assets/audio/Rain/1.mp3`,
+			intensity: "high",
+		},
+		{
+			source:
+				`${import.meta.env.BASE_URL}assets/audio/Rain/2.mp3`,
+			intensity: "high",
+		},
+		{
+			source:
+				`${import.meta.env.BASE_URL}assets/audio/Rain/3.mp3`,
+			intensity: "medium",
+		},
+		{
+			source:
+				`${import.meta.env.BASE_URL}assets/audio/Rain/4.mp3`,
+			intensity: "light",
+		},
+	] satisfies RainTrack[],
 
     initialMasterVolume: 0.4,
 
