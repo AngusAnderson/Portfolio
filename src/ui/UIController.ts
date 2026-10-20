@@ -1,5 +1,12 @@
 import { createStartMenu } from "./startMenu";
 import { createPauseMenu } from "./pauseMenu";
+import { createControlsPanel } from "./controlsPanel";
+
+import {
+    createSettingsPanel,
+    type SettingsPanel,
+    type UISettings,
+} from "./settingsPanel";
 
 export type AppState =
     | "start"
@@ -13,9 +20,8 @@ export type UIControllerOptions = {
 
     onMenuOpened?: (state: MenuState) => void;
 
-    onSettings?: (from: MenuState) => void;
-
-    onControls?: (from: MenuState) => void;
+    getSettings: () => UISettings;
+    onSettingsChange: (settings: UISettings) => void;
 
     onProjects?: (from: MenuState) => void;
 };
@@ -28,15 +34,27 @@ export class UIController {
     private readonly startMenu: HTMLElement;
     private readonly pauseMenu: HTMLElement;
 
+    private readonly controlsPanel: HTMLDialogElement;
+    private readonly settingsPanel: SettingsPanel;
+
     constructor(options: UIControllerOptions) {
         this.options = options;
 
         this.startMenu = createStartMenu();
         this.pauseMenu = createPauseMenu();
 
+        this.controlsPanel = createControlsPanel();
+
+        this.settingsPanel = createSettingsPanel({
+            getSettings: options.getSettings,
+            onChange: options.onSettingsChange,
+        });
+
         document.body.append(
             this.startMenu,
-            this.pauseMenu
+            this.pauseMenu,
+            this.controlsPanel,
+            this.settingsPanel.dialog
         );
 
         this.bindButtons();
@@ -55,6 +73,8 @@ export class UIController {
     public showPlaying(): void {
         this.currentState = "playing";
 
+        this.closePanels();
+
         this.startMenu.hidden = true;
         this.pauseMenu.hidden = true;
     }
@@ -72,24 +92,47 @@ export class UIController {
     }
 
     public focusPrimaryAction(): void {
-        if (this.currentState === "playing") {
+        if (this.isPlaying) {
             return;
         }
 
-        const menu = this.currentState === "start"
+        if (this.settingsPanel.dialog.open) {
+            this.settingsPanel.dialog
+                .querySelector<HTMLButtonElement>(
+                    'button[type="submit"]'
+                )
+                ?.focus();
+
+            return;
+        }
+
+        if (this.controlsPanel.open) {
+            this.controlsPanel
+                .querySelector<HTMLButtonElement>(
+                    'button[type="submit"]'
+                )
+                ?.focus();
+
+            return;
+        }
+
+        this.getCurrentMenu()
+            .querySelector<HTMLButtonElement>(
+                ".start-menu__button--primary"
+            )
+            ?.focus();
+    }
+
+    private getCurrentMenu(): HTMLElement {
+        return this.currentState === "start"
             ? this.startMenu
             : this.pauseMenu;
-
-        const button =
-            menu.querySelector<HTMLButtonElement>(
-                ".start-menu__button--primary"
-            );
-
-        button?.focus();
     }
 
     private openMenu(state: MenuState): void {
         this.currentState = state;
+
+        this.closePanels();
 
         this.startMenu.hidden = state !== "start";
         this.pauseMenu.hidden = state !== "paused";
@@ -97,6 +140,28 @@ export class UIController {
         this.options.onMenuOpened?.(state);
 
         this.focusPrimaryAction();
+    }
+
+    private closePanels(): void {
+        if (this.controlsPanel.open) {
+            this.controlsPanel.close();
+        }
+
+        if (this.settingsPanel.dialog.open) {
+            this.settingsPanel.dialog.close();
+        }
+    }
+
+    private openPanel(
+        dialog: HTMLDialogElement
+    ): void {
+        if (this.isPlaying || dialog.open) {
+            return;
+        }
+
+        this.closePanels();
+
+        dialog.showModal();
     }
 
     private bindButtons(): void {
@@ -118,32 +183,34 @@ export class UIController {
             () => this.showStart()
         );
 
-        const onSettings = this.options.onSettings;
-        const onControls = this.options.onControls;
-        const onProjects = this.options.onProjects;
-
-        const menus: [HTMLElement, MenuState][] = [
-            [this.startMenu, "start"],
-            [this.pauseMenu, "paused"],
-        ];
-
-        for (const [menu, state] of menus) {
+        for (const menu of [
+            this.startMenu,
+            this.pauseMenu,
+        ]) {
             this.bindAction(
                 menu,
                 "settings",
-                onSettings
-                    ? () => onSettings(state)
-                    : undefined
+                () => {
+                    this.settingsPanel.refresh();
+
+                    this.openPanel(
+                        this.settingsPanel.dialog
+                    );
+                }
             );
 
             this.bindAction(
                 menu,
                 "controls",
-                onControls
-                    ? () => onControls(state)
-                    : undefined
+                () => {
+                    this.openPanel(
+                        this.controlsPanel
+                    );
+                }
             );
         }
+
+        const onProjects = this.options.onProjects;
 
         this.bindAction(
             this.startMenu,

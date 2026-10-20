@@ -10,6 +10,7 @@ import { RainAudio } from "./engine/audio";
 import { RainRenderer } from "./engine/weather";
 
 import { UIController } from "./ui/UIController";
+import type { UISettings } from "./ui/settingsPanel";
 
 // ========================================
 // MARK: Canvas
@@ -75,6 +76,72 @@ const rainRenderer = new RainRenderer(
 );
 
 // ========================================
+// MARK: Settings
+// ========================================
+
+const DEFAULT_HORIZONTAL_SENSITIVITY = 0.003;
+const DEFAULT_VERTICAL_SENSITIVITY = 0.002;
+
+let showRainVisuals = true;
+
+const muteButton =
+    document.querySelector<HTMLButtonElement>("#rain-mute");
+
+const volumeSlider =
+    document.querySelector<HTMLInputElement>("#rain-volume");
+
+function getSettings(): UISettings {
+    return {
+        rainVolume: rainAudio.volume,
+        rainMuted: rainAudio.isMuted,
+
+        horizontalSensitivity:
+            player.mouseSensitivity /
+            DEFAULT_HORIZONTAL_SENSITIVITY,
+
+        verticalSensitivity:
+            player.pitchSensitivity /
+            DEFAULT_VERTICAL_SENSITIVITY,
+
+        showRain: showRainVisuals,
+    };
+}
+
+function syncExistingAudioControls(): void {
+    if (muteButton) {
+        muteButton.textContent = rainAudio.isMuted
+            ? "Unmute rain"
+            : "Mute rain";
+
+        muteButton.setAttribute(
+            "aria-pressed",
+            String(rainAudio.isMuted)
+        );
+    }
+
+    if (volumeSlider) {
+        volumeSlider.value = String(rainAudio.volume);
+    }
+}
+
+function applySettings(settings: UISettings): void {
+    rainAudio.setVolume(settings.rainVolume);
+    rainAudio.setMuted(settings.rainMuted);
+
+    player.mouseSensitivity =
+        DEFAULT_HORIZONTAL_SENSITIVITY *
+        settings.horizontalSensitivity;
+
+    player.pitchSensitivity =
+        DEFAULT_VERTICAL_SENSITIVITY *
+        settings.verticalSensitivity;
+
+    showRainVisuals = settings.showRain;
+
+    syncExistingAudioControls();
+}
+
+// ========================================
 // MARK: Input tracking and frame timing
 // ========================================
 
@@ -112,6 +179,10 @@ const ui = new UIController({
             document.exitPointerLock();
         }
     },
+
+    getSettings,
+
+    onSettingsChange: applySettings,
 });
 
 // ========================================
@@ -263,33 +334,13 @@ document.addEventListener("visibilitychange", () => {
 // MARK: Existing audio controls
 // ========================================
 
-const muteButton =
-    document.querySelector<HTMLButtonElement>("#rain-mute");
-
-const volumeSlider =
-    document.querySelector<HTMLInputElement>("#rain-volume");
+syncExistingAudioControls();
 
 if (muteButton) {
-    muteButton.textContent = rainAudio.isMuted
-        ? "Unmute rain"
-        : "Mute rain";
-
-    muteButton.setAttribute(
-        "aria-pressed",
-        String(rainAudio.isMuted)
-    );
-
     muteButton.addEventListener("click", () => {
         rainAudio.setMuted(!rainAudio.isMuted);
 
-        muteButton.textContent = rainAudio.isMuted
-            ? "Unmute rain"
-            : "Mute rain";
-
-        muteButton.setAttribute(
-            "aria-pressed",
-            String(rainAudio.isMuted)
-        );
+        syncExistingAudioControls();
 
         void rainAudio.start().catch((error: unknown) => {
             console.error(
@@ -301,12 +352,12 @@ if (muteButton) {
 }
 
 if (volumeSlider) {
-    volumeSlider.value = String(rainAudio.volume);
-
     volumeSlider.addEventListener("input", () => {
         rainAudio.setVolume(
             Number(volumeSlider.value)
         );
+
+        syncExistingAudioControls();
     });
 }
 
@@ -337,7 +388,6 @@ function gameLoop(timestamp: number): void {
         environment.current,
         player
     );
-
     rainRenderer.update(deltaTime);
 
     raycaster.castAllRays();
@@ -354,7 +404,6 @@ function gameLoop(timestamp: number): void {
         )
     );
 
-    // Sky / ceiling.
     context.fillStyle = "#252530";
 
     context.fillRect(
@@ -364,7 +413,6 @@ function gameLoop(timestamp: number): void {
         horizon
     );
 
-    // Ground.
     context.fillStyle = "#454039";
 
     context.fillRect(
@@ -384,10 +432,12 @@ function gameLoop(timestamp: number): void {
 
     raycaster.render(context);
 
-    rainRenderer.render(
-        context,
-        raycaster
-    );
+    if (showRainVisuals) {
+        rainRenderer.render(
+            context,
+            raycaster
+        );
+    }
 
     requestAnimationFrame(gameLoop);
 }
