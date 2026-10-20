@@ -1,0 +1,578 @@
+/* ========================================
+   Start menu
+======================================== */
+
+.start-menu {
+	--menu-text: #f0ece4;
+	--menu-muted: #b9b5ad;
+	--menu-accent: #c9ad76;
+	--menu-accent-bright: #e4c990;
+	--menu-border: rgb(201 173 118 / 25%);
+	--menu-panel: rgb(15 18 23 / 92%);
+
+	position: fixed;
+	inset: 0;
+	z-index: 1000;
+
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+
+	box-sizing: border-box;
+	padding: 48px 24px;
+	overflow-y: auto;
+
+	color: var(--menu-text);
+	background:
+		radial-gradient(
+			ellipse at center,
+			rgb(8 12 18 / 20%) 0%,
+			rgb(5 8 12 / 75%) 100%
+		),
+		rgb(5 8 12 / 35%);
+
+	font-family: system-ui, -apple-system, BlinkMacSystemFont,
+		"Segoe UI", sans-serif;
+	line-height: 1.5;
+
+	/* Keep interface text separate from pixel-art styling. */
+	text-align: center;
+	text-shadow: none;
+}
+
+.start-menu,
+.start-menu * {
+	box-sizing: border-box;
+}
+
+/* Explicitly override the display rule when hidden. */
+.start-menu[hidden] {
+	display: none;
+}
+
+/* ========================================
+   Panel
+======================================== */
+
+.start-menu__panel {
+	position: relative;
+	flex-shrink: 0;
+
+	width: min(100%, 460px);
+	margin-block: auto;
+	padding: 44px 36px 32px;
+
+	background: var(--menu-panel);
+	border: 1px solid var(--menu-border);
+	border-radius: 4px;
+
+	box-shadow:
+		0 24px 80px rgb(0 0 0 / 45%),
+		inset 0 1px 0 rgb(255 255 255 / 4%);
+}
+
+/* Decorative line above the heading. */
+.start-menu__panel::before {
+	content: "";
+
+	position: absolute;
+	top: 0;
+	left: 25%;
+	right: 25%;
+
+	height: 1px;
+
+	background: linear-gradient(
+		90deg,
+		transparent,
+		var(--menu-accent),
+		transparent
+	);
+}
+
+/* ========================================
+   Heading and introduction
+======================================== */
+
+.start-menu__eyebrow {
+	margin: 0;
+
+	color: var(--menu-muted);
+
+	font-size: 0.7rem;
+	font-weight: 500;
+	letter-spacing: 0.2em;
+	text-transform: uppercase;
+}
+
+.start-menu__ornament {
+	display: block;
+	margin: 20px 0 12px;
+
+	color: var(--menu-accent);
+
+	font-size: 1.25rem;
+	line-height: 1;
+}
+
+.start-menu__title {
+	margin: 0;
+
+	font-family: Georgia, "Times New Roman", serif;
+	font-size: clamp(2.5rem, 8vw, 3.75rem);
+	font-weight: 400;
+	letter-spacing: 0.025em;
+	line-height: 1.1;
+
+	overflow-wrap: anywhere;
+}
+
+.start-menu__description {
+	max-width: 30ch;
+	margin: 20px auto 0;
+
+	color: var(--menu-muted);
+
+	font-size: 0.9rem;
+	line-height: 1.7;
+}
+
+/* ========================================
+   Main actions
+======================================== */
+
+.start-menu__actions {
+	display: grid;
+	gap: 12px;
+
+	margin-top: 36px;
+}
+
+.start-menu__button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+
+	width: 100%;
+	min-height: 48px;
+	padding: 12px 18px;
+
+	border: 1px solid transparent;
+	border-radius: 2px;
+
+	font: inherit;
+	font-size: 0.9rem;
+	font-weight: 500;
+	line-height: 1.4;
+	text-align: center;
+
+	cursor: pointer;
+
+	transition:
+		background-color 160ms ease,
+		border-color 160ms ease,
+		color 160ms ease;
+}
+
+.start-menu__button--primary {
+	color: #17150f;
+	background: var(--menu-accent);
+	border-color: var(--menu-accent);
+}
+
+.start-menu__button--primary:hover {
+	background: var(--menu-accent-bright);
+	border-color: var(--menu-accent-bright);
+}
+
+.start-menu__arrow {
+	font-size: 1.1rem;
+	line-height: 1;
+}
+
+.start-menu__secondary-actions {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.start-menu__button--secondary {
+	color: var(--menu-text);
+	background: rgb(255 255 255 / 3%);
+	border-color: rgb(255 255 255 / 13%);
+}
+
+.start-menu__button--secondary:hover {
+	color: var(--menu-accent-bright);
+	background: rgb(201 173 118 / 8%);
+	border-color: var(--menu-border);
+}
+
+/* Visible keyboard focus. */
+.start-menu__button:focus-visible,
+.start-menu__text-button:focus-visible {
+	outline: 2px solid var(--menu-accent-bright);
+	outline-offset: 4px;
+}
+
+/* ========================================
+   Footer
+======================================== */
+
+.start-menu__footer {
+	margin-top: 28px;
+	padding-top: 24px;
+
+	border-top: 1px solid rgb(255 255 255 / 9%);
+}
+
+.start-menu__note {
+	margin: 0 0 10px;
+
+	color: var(--menu-muted);
+
+	font-size: 0.75rem;
+	line-height: 1.6;
+}
+
+.start-menu__text-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+
+	min-height: 44px;
+	max-width: 100%;
+	padding: 8px 4px;
+
+	color: var(--menu-accent);
+	background: transparent;
+	border: 0;
+	border-radius: 2px;
+
+	font: inherit;
+	font-size: 0.8rem;
+	line-height: 1.5;
+
+	cursor: pointer;
+
+	text-decoration: underline;
+	text-decoration-color: transparent;
+	text-underline-offset: 4px;
+}
+
+.start-menu__text-button:hover {
+	color: var(--menu-accent-bright);
+	text-decoration-color: currentColor;
+}
+
+.start-menu__caption {
+	flex-shrink: 0;
+
+	margin: 24px 0 0;
+
+	color: var(--menu-muted);
+
+	font-family: Georgia, "Times New Roman", serif;
+	font-size: 0.8rem;
+	font-style: italic;
+	letter-spacing: 0.025em;
+}
+
+/* ========================================
+   Small screens
+======================================== */
+
+@media (max-width: 480px) {
+	.start-menu {
+		padding: 24px 16px;
+	}
+
+	.start-menu__panel {
+		padding: 32px 24px 24px;
+	}
+
+	.start-menu__actions {
+		margin-top: 28px;
+	}
+}
+
+@media (max-width: 320px) {
+	.start-menu__secondary-actions {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* ========================================
+   Reduced motion
+======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+	.start-menu__button {
+		transition: none;
+	}
+}
+
+/* ========================================
+   Disabled button styling
+======================================== */
+
+.start-menu__button:disabled,
+.start-menu__text-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.start-menu__button--secondary:disabled:hover {
+    color: var(--menu-text);
+    background: rgb(255 255 255 / 3%);
+    border-color: rgb(255 255 255 / 13%);
+}
+
+.start-menu__text-button:disabled:hover {
+    color: var(--menu-accent);
+    text-decoration-color: transparent;
+}
+
+/* ========================================
+   Settings and controls dialogs
+======================================== */
+
+.ui-dialog {
+    --menu-text: #f0ece4;
+    --menu-muted: #b9b5ad;
+    --menu-accent: #c9ad76;
+    --menu-accent-bright: #e4c990;
+    --menu-border: rgb(201 173 118 / 25%);
+
+    box-sizing: border-box;
+
+    width: min(520px, calc(100% - 32px));
+    max-height: calc(100dvh - 48px);
+
+    margin: auto;
+    padding: 32px;
+
+    overflow-y: auto;
+
+    color: var(--menu-text);
+    background: #0f1217;
+
+    border: 1px solid var(--menu-border);
+    border-radius: 4px;
+
+    box-shadow: 0 24px 80px rgb(0 0 0 / 50%);
+
+    font-family: system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+    line-height: 1.5;
+
+    color-scheme: dark;
+}
+
+.ui-dialog,
+.ui-dialog * {
+    box-sizing: border-box;
+}
+
+.ui-dialog::backdrop {
+    background: rgb(0 0 0 / 70%);
+}
+
+.ui-dialog__header {
+    margin-bottom: 28px;
+}
+
+.ui-dialog__title {
+    margin: 0;
+
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 2rem;
+    font-weight: 400;
+    line-height: 1.2;
+}
+
+.ui-dialog__description {
+    margin: 12px 0 0;
+
+    color: var(--menu-muted);
+    font-size: 0.9rem;
+}
+
+.ui-dialog__note {
+    margin: 12px 0 0;
+
+    color: var(--menu-muted);
+    font-size: 0.8rem;
+    line-height: 1.6;
+}
+
+.ui-dialog__footer {
+    margin-top: 28px;
+    padding-top: 20px;
+
+    border-top: 1px solid rgb(255 255 255 / 9%);
+}
+
+/* ========================================
+   Controls
+======================================== */
+
+.controls-list {
+    margin: 0;
+}
+
+.controls-list__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+
+    padding: 14px 0;
+
+    border-bottom: 1px solid rgb(255 255 255 / 8%);
+
+    font-size: 0.85rem;
+}
+
+.controls-list__row dt {
+    color: var(--menu-text);
+}
+
+.controls-list__row dd {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    margin: 0;
+
+    color: var(--menu-muted);
+    text-align: right;
+}
+
+.controls-list kbd {
+    display: inline-block;
+
+    min-width: 30px;
+    padding: 4px 8px;
+
+    color: var(--menu-text);
+    background: rgb(255 255 255 / 5%);
+
+    border: 1px solid rgb(255 255 255 / 15%);
+    border-radius: 3px;
+
+    font: inherit;
+    text-align: center;
+}
+
+/* ========================================
+   Settings
+======================================== */
+
+.settings-group {
+    min-width: 0;
+
+    margin: 0 0 24px;
+    padding: 0;
+
+    border: 0;
+}
+
+.settings-group:last-of-type {
+    margin-bottom: 0;
+}
+
+.settings-group legend {
+    width: 100%;
+    margin-bottom: 16px;
+    padding: 0 0 8px;
+
+    color: var(--menu-accent);
+
+    border-bottom: 1px solid var(--menu-border);
+
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.settings-field {
+    margin-bottom: 20px;
+}
+
+.settings-field:last-child {
+    margin-bottom: 0;
+}
+
+.settings-field__heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+
+    margin-bottom: 12px;
+
+    font-size: 0.85rem;
+}
+
+.settings-field output {
+    flex-shrink: 0;
+
+    color: var(--menu-accent);
+    font-variant-numeric: tabular-nums;
+}
+
+.settings-field input[type="range"] {
+    display: block;
+
+    width: 100%;
+    min-height: 32px;
+    margin: 0;
+
+    accent-color: var(--menu-accent);
+    cursor: pointer;
+}
+
+.settings-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+
+    min-height: 44px;
+
+    font-size: 0.85rem;
+
+    cursor: pointer;
+}
+
+.settings-toggle input {
+    flex-shrink: 0;
+
+    width: 20px;
+    height: 20px;
+    margin: 0;
+
+    accent-color: var(--menu-accent);
+    cursor: pointer;
+}
+
+.ui-dialog input:focus-visible {
+    outline: 2px solid var(--menu-accent-bright);
+    outline-offset: 4px;
+}
+
+@media (max-width: 480px) {
+    .ui-dialog {
+        padding: 24px;
+    }
+
+    .controls-list__row {
+        gap: 12px;
+    }
+}

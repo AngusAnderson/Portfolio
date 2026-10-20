@@ -1,6 +1,7 @@
 import "./style.css";
 
 import { WINDOW_HEIGHT, WINDOW_WIDTH } from "./settings";
+
 import { GameMap } from "./engine/map";
 import { Player } from "./engine/player";
 import { Raycaster } from "./engine/raycaster";
@@ -8,218 +9,441 @@ import { EnvironmentSystem } from "./engine/environment";
 import { RainAudio } from "./engine/audio";
 import { RainRenderer } from "./engine/weather";
 
-const canvas = document.querySelector<HTMLCanvasElement>("#game");
+import { UIController } from "./ui/UIController";
+import type { UISettings } from "./ui/settingsPanel";
 
-if (!canvas) {
-	throw new Error("Could not find the #game canvas element");
-}
+// ========================================
+// MARK: Canvas
+// ========================================
 
-const context = canvas.getContext("2d");
+const canvas = (() => {
+    const element =
+        document.querySelector<HTMLCanvasElement>("#game");
 
-if (!context) {
-	throw new Error("Could not get a 2D canvas rendering context");
-}
+    if (!element) {
+        throw new Error(
+            "Could not find the #game canvas element"
+        );
+    }
+
+    return element;
+})();
+
+const context = (() => {
+    const result = canvas.getContext("2d");
+
+    if (!result) {
+        throw new Error(
+            "Could not get a 2D canvas rendering context"
+        );
+    }
+
+    return result;
+})();
 
 canvas.width = WINDOW_WIDTH;
 canvas.height = WINDOW_HEIGHT;
+
+// ========================================
+// MARK: World
+// ========================================
 
 const map = new GameMap();
 const player = new Player();
 const raycaster = new Raycaster(player, map);
 
 const environment = new EnvironmentSystem();
+
 environment.update(player, map);
 
-const rainAudio = new RainAudio();
-rainAudio.update(environment.current, player);
+// ========================================
+// MARK: Rain
+// ========================================
 
-const rainRenderer = new RainRenderer(
-	rainAudio.intensity,
-	map,
-	player,
-	canvas.width,
-	canvas.height
+const rainAudio = new RainAudio();
+
+rainAudio.update(
+    environment.current,
+    player
 );
 
-window.addEventListener("keydown", (event: KeyboardEvent) => {
-	player.handleKeyDown(event);
-});
+const rainRenderer = new RainRenderer(
+    rainAudio.intensity,
+    map,
+    player,
+    canvas.width,
+    canvas.height
+);
 
-window.addEventListener("keyup", (event: KeyboardEvent) => {
-	player.handleKeyUp(event);
-});
+// ========================================
+// MARK: Settings
+// ========================================
+
+const DEFAULT_HORIZONTAL_SENSITIVITY = 0.003;
+const DEFAULT_VERTICAL_SENSITIVITY = 0.002;
+
+let showRainVisuals = true;
+
+const muteButton =
+    document.querySelector<HTMLButtonElement>("#rain-mute");
+
+const volumeSlider =
+    document.querySelector<HTMLInputElement>("#rain-volume");
+
+function getSettings(): UISettings {
+    return {
+        rainVolume: rainAudio.volume,
+        rainMuted: rainAudio.isMuted,
+
+        horizontalSensitivity:
+            player.mouseSensitivity /
+            DEFAULT_HORIZONTAL_SENSITIVITY,
+
+        verticalSensitivity:
+            player.pitchSensitivity /
+            DEFAULT_VERTICAL_SENSITIVITY,
+
+        showRain: showRainVisuals,
+    };
+}
+
+function syncExistingAudioControls(): void {
+    if (muteButton) {
+        muteButton.textContent = rainAudio.isMuted
+            ? "Unmute rain"
+            : "Mute rain";
+
+        muteButton.setAttribute(
+            "aria-pressed",
+            String(rainAudio.isMuted)
+        );
+    }
+
+    if (volumeSlider) {
+        volumeSlider.value = String(rainAudio.volume);
+    }
+}
+
+function applySettings(settings: UISettings): void {
+    rainAudio.setVolume(settings.rainVolume);
+    rainAudio.setMuted(settings.rainMuted);
+
+    player.mouseSensitivity =
+        DEFAULT_HORIZONTAL_SENSITIVITY *
+        settings.horizontalSensitivity;
+
+    player.pitchSensitivity =
+        DEFAULT_VERTICAL_SENSITIVITY *
+        settings.verticalSensitivity;
+
+    showRainVisuals = settings.showRain;
+
+    syncExistingAudioControls();
+}
+
+// ========================================
+// MARK: Input tracking and frame timing
+// ========================================
 
 let previousTime: number | null = null;
 
-canvas.addEventListener("click", async () => {
-	void rainAudio.start().catch((error: unknown) => {
-		console.error('Could not start rain audio:', error);
-	});
-	
-	
-	if (document.pointerLockElement === canvas) {
-		return;
-	}
+const heldKeys = new Map<string, KeyboardEvent>();
 
-	try {
-		await canvas.requestPointerLock();
-	} catch (error) {
-		console.error("Could not capture the mouse:", error);
-	}
+function clearHeldKeys(): void {
+    for (const event of heldKeys.values()) {
+        player.handleKeyUp(
+            new KeyboardEvent("keyup", {
+                key: event.key,
+                code: event.code,
+                location: event.location,
+            })
+        );
+    }
+
+    heldKeys.clear();
+}
+
+// ========================================
+// MARK: UI controller
+// ========================================
+
+const ui = new UIController({
+    onRequestPlay: () => {
+        void requestPlay();
+    },
+
+    onMenuOpened: () => {
+        clearHeldKeys();
+
+        if (document.pointerLockElement === canvas) {
+            document.exitPointerLock();
+        }
+    },
+
+    getSettings,
+
+    onSettingsChange: applySettings,
 });
 
-document.addEventListener("mousemove", (event: MouseEvent) => {
-	if (document.pointerLockElement !== canvas) {
-		return;
-	}
+// ========================================
+// MARK: Enter / resume
+// ========================================
 
-	player.handleMouseMove(event);
+async function requestPlay(): Promise<void> {
+    void rainAudio.start().catch((error: unknown) => {
+        console.error(
+            "Could not start rain audio:",
+            error
+        );
+    });
+
+    if (document.pointerLockElement === canvas) {
+        clearHeldKeys();
+
+        previousTime = null;
+
+        ui.showPlaying();
+        return;
+    }
+
+    try {
+        await canvas.requestPointerLock();
+    } catch (error: unknown) {
+        ui.focusPrimaryAction();
+
+        console.error(
+            "Could not capture the mouse. " +
+                "Click Enter or Resume to retry.",
+            error
+        );
+    }
+}
+
+// ========================================
+// MARK: Keyboard input
+// ========================================
+
+window.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (!ui.isPlaying) {
+        return;
+    }
+
+    heldKeys.set(event.code, event);
+
+    player.handleKeyDown(event);
+});
+
+window.addEventListener("keyup", (event: KeyboardEvent) => {
+    if (!heldKeys.has(event.code)) {
+        return;
+    }
+
+    heldKeys.delete(event.code);
+
+    player.handleKeyUp(event);
+});
+
+// ========================================
+// MARK: Mouse input
+// ========================================
+
+document.addEventListener("mousemove", (event: MouseEvent) => {
+    if (
+        !ui.isPlaying ||
+        document.pointerLockElement !== canvas
+    ) {
+        return;
+    }
+
+    player.handleMouseMove(event);
+});
+
+// ========================================
+// MARK: Pointer lock
+// ========================================
+
+document.addEventListener("pointerlockchange", () => {
+    if (document.pointerLockElement === canvas) {
+        clearHeldKeys();
+
+        previousTime = null;
+
+        ui.showPlaying();
+        return;
+    }
+
+    if (ui.isPlaying) {
+        ui.showPause();
+    }
 });
 
 document.addEventListener("pointerlockerror", () => {
-	console.error(
-		"Pointer lock failed. Click the game again to try capturing the mouse."
-	);
+    if (ui.isPlaying) {
+        ui.showPause();
+    }
+
+    ui.focusPrimaryAction();
+
+    console.error(
+        "Pointer lock failed. " +
+            "Click Enter or Resume to try again."
+    );
 });
 
-function gameLoop(timestamp: number): void {
-	const deltaTime = previousTime === null
-		? 0
-		: (timestamp - previousTime) / 1000;
+// ========================================
+// MARK: Window focus
+// ========================================
 
-	previousTime = timestamp;
+function pauseExperience(): void {
+    clearHeldKeys();
 
-	player.update(map, deltaTime);
-	environment.update(player, map);
-	rainAudio.update(environment.current, player);
-	rainRenderer.update(deltaTime);
-	raycaster.castAllRays();
+    if (ui.isPlaying) {
+        ui.showPause();
+    }
 
-	if (!context) {
-		throw new Error("Could not load the canvas context");
-	}
+    if (document.pointerLockElement === canvas) {
+        document.exitPointerLock();
+    }
 
-	const horizon = Math.max(
-		0,
-		Math.min(WINDOW_HEIGHT, raycaster.horizonY)
-	);
-
-	// Sky / ceiling.
-	context.fillStyle = "#252530";
-	context.fillRect(
-		0,
-		0,
-		WINDOW_WIDTH,
-		horizon
-	);
-
-	// Ground.
-	context.fillStyle = "#454039";
-	context.fillRect(
-		0,
-		horizon,
-		WINDOW_WIDTH,
-		WINDOW_HEIGHT - horizon
-	);
-
-	// Uncomment these for the top-down debugging view:
-	// map.render(context);
-	// player.render(context);
-
-	raycaster.render(context);
-	rainRenderer.render(context, raycaster);
-
-	const currentEnvironment = environment.current;
-
-	context.save();
-
-	context.fillStyle = "rgba(0, 0, 0, 0.75)";
-	context.fillRect(6, 6, 290, 78);
-
-	context.fillStyle = "#ffffff";
-	context.font = "10px monospace";
-	context.textBaseline = "top";
-
-	context.fillText(
-		`Area: ${currentEnvironment.zoneName}`,
-		12,
-		12
-	);
-
-	context.fillText(
-		`Location: ${currentEnvironment.kind}`,
-		12,
-		26
-	);
-
-	context.fillText(
-		`Sheltered: ${currentEnvironment.sheltered}`,
-		12,
-		40
-	);
-
-	context.fillText(
-		`Rain exposure: ${currentEnvironment.exposedToRain}`,
-		12,
-		54
-	);
-
-	context.fillText(
-		`Cover: ${currentEnvironment.shelterSource}`,
-		12,
-		68
-	);
-
-	context.restore();
-
-	requestAnimationFrame(gameLoop);
+    previousTime = null;
 }
 
+window.addEventListener("blur", pauseExperience);
+
+// ========================================
+// MARK: Page visibility / audio
+// ========================================
+
 document.addEventListener("visibilitychange", () => {
-	void rainAudio
-		.setPageVisible(!document.hidden)
-		.catch((error: unknown) => {
-			console.warn(
-				"Could not change audio playback state. Click the game to resume.",
-				error
-			);
-		});
+    if (document.hidden) {
+        pauseExperience();
+    }
+
+    void rainAudio
+        .setPageVisible(!document.hidden)
+        .catch((error: unknown) => {
+            console.warn(
+                "Could not change audio playback state. " +
+                    "Use Enter or Resume to retry.",
+                error
+            );
+        });
 });
 
-const muteButton =
-	document.querySelector<HTMLButtonElement>("#rain-mute");
+// ========================================
+// MARK: Existing audio controls
+// ========================================
 
-const volumeSlider =
-	document.querySelector<HTMLInputElement>("#rain-volume");
+syncExistingAudioControls();
 
 if (muteButton) {
-	muteButton.addEventListener("click", () => {
-		rainAudio.setMuted(!rainAudio.isMuted);
+    muteButton.addEventListener("click", () => {
+        rainAudio.setMuted(!rainAudio.isMuted);
 
-		muteButton.textContent = rainAudio.isMuted
-			? "Unmute rain"
-			: "Mute rain";
+        syncExistingAudioControls();
 
-		muteButton.setAttribute(
-			"aria-pressed",
-			String(rainAudio.isMuted)
-		);
-
-		void rainAudio.start().catch((error: unknown) => {
-			console.error(
-				"Could not start rain audio:",
-				error
-			);
-		});
-	});
+        void rainAudio.start().catch((error: unknown) => {
+            console.error(
+                "Could not start rain audio:",
+                error
+            );
+        });
+    });
 }
 
 if (volumeSlider) {
-	volumeSlider.value = String(rainAudio.volume);
+    volumeSlider.addEventListener("input", () => {
+        rainAudio.setVolume(
+            Number(volumeSlider.value)
+        );
 
-	volumeSlider.addEventListener("input", () => {
-		rainAudio.setVolume(Number(volumeSlider.value));
-	});
+        syncExistingAudioControls();
+    });
 }
+
+// ========================================
+// MARK: Game loop
+// ========================================
+
+function gameLoop(timestamp: number): void {
+    const deltaTime = previousTime === null
+        ? 0
+        : Math.max(
+            0,
+            Math.min(
+                (timestamp - previousTime) / 1000,
+                0.05
+            )
+        );
+
+    previousTime = timestamp;
+
+    if (ui.isPlaying) {
+        player.update(map, deltaTime);
+    }
+
+    environment.update(player, map);
+
+    rainAudio.update(
+        environment.current,
+        player
+    );
+    rainRenderer.update(deltaTime);
+
+    raycaster.castAllRays();
+
+    // ====================================
+    // MARK: Background
+    // ====================================
+
+    const horizon = Math.max(
+        0,
+        Math.min(
+            WINDOW_HEIGHT,
+            raycaster.horizonY
+        )
+    );
+
+    context.fillStyle = "#252530";
+
+    context.fillRect(
+        0,
+        0,
+        WINDOW_WIDTH,
+        horizon
+    );
+
+    context.fillStyle = "#454039";
+
+    context.fillRect(
+        0,
+        horizon,
+        WINDOW_WIDTH,
+        WINDOW_HEIGHT - horizon
+    );
+
+    // Uncomment these for the top-down debugging view:
+    // map.render(context);
+    // player.render(context);
+
+    // ====================================
+    // MARK: World and rain
+    // ====================================
+
+    raycaster.render(context);
+
+    if (showRainVisuals) {
+        rainRenderer.render(
+            context,
+            raycaster
+        );
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+
+// ========================================
+// MARK: Initial state
+// ========================================
 
 requestAnimationFrame(gameLoop);
