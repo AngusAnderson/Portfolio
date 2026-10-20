@@ -9,23 +9,32 @@ import { EnvironmentSystem } from "./engine/environment";
 import { RainAudio } from "./engine/audio";
 import { RainRenderer } from "./engine/weather";
 
-import { createStartMenu } from "./ui/startMenu";
+import { UIController } from "./ui/UIController";
 
 // ========================================
 // MARK: Canvas
 // ========================================
 
-const canvas = document.querySelector<HTMLCanvasElement>("#game");
+const canvas = (() => {
+    const element =
+        document.querySelector<HTMLCanvasElement>("#game");
 
-if (!canvas) {
-    throw new Error("Could not find the #game canvas element");
-}
+    if (!element) {
+        throw new Error(
+            "Could not find the #game canvas element"
+        );
+    }
+
+    return element;
+})();
 
 const context = (() => {
     const result = canvas.getContext("2d");
 
     if (!result) {
-        throw new Error("Could not get a 2D canvas rendering context");
+        throw new Error(
+            "Could not get a 2D canvas rendering context"
+        );
     }
 
     return result;
@@ -52,7 +61,10 @@ environment.update(player, map);
 
 const rainAudio = new RainAudio();
 
-rainAudio.update(environment.current, player);
+rainAudio.update(
+    environment.current,
+    player
+);
 
 const rainRenderer = new RainRenderer(
     rainAudio.intensity,
@@ -63,27 +75,9 @@ const rainRenderer = new RainRenderer(
 );
 
 // ========================================
-// MARK: Start menu
+// MARK: Input tracking and frame timing
 // ========================================
 
-const startMenu = createStartMenu();
-
-document.body.append(startMenu);
-
-const enterButton =
-    startMenu.querySelector<HTMLButtonElement>(
-        '[data-menu-action="enter"]'
-    );
-
-if (!enterButton) {
-    throw new Error("Could not find the Enter the Castle button");
-}
-
-// ========================================
-// MARK: Application state
-// ========================================
-
-let isPlaying = false;
 let previousTime: number | null = null;
 
 const heldKeys = new Map<string, KeyboardEvent>();
@@ -102,57 +96,64 @@ function clearHeldKeys(): void {
     heldKeys.clear();
 }
 
-function showMenu(): void {
-    isPlaying = false;
+// ========================================
+// MARK: UI controller
+// ========================================
 
-    clearHeldKeys();
+const ui = new UIController({
+    onRequestPlay: () => {
+        void requestPlay();
+    },
 
-    startMenu.hidden = false;
-}
+    onMenuOpened: () => {
+        clearHeldKeys();
 
-function enterGame(): void {
-    clearHeldKeys();
-
-    isPlaying = true;
-    startMenu.hidden = true;
-
-    // Avoid a large movement step when resuming.
-    previousTime = null;
-}
+        if (document.pointerLockElement === canvas) {
+            document.exitPointerLock();
+        }
+    },
+});
 
 // ========================================
 // MARK: Enter / resume
 // ========================================
 
-enterButton.addEventListener("click", async () => {
-    // Do not wait for audio loading before requesting pointer lock.
+async function requestPlay(): Promise<void> {
     void rainAudio.start().catch((error: unknown) => {
-        console.error("Could not start rain audio:", error);
+        console.error(
+            "Could not start rain audio:",
+            error
+        );
     });
 
     if (document.pointerLockElement === canvas) {
-        enterGame();
+        clearHeldKeys();
+
+        previousTime = null;
+
+        ui.showPlaying();
         return;
     }
 
     try {
         await canvas.requestPointerLock();
     } catch (error: unknown) {
-        showMenu();
+        ui.focusPrimaryAction();
 
         console.error(
-            "Could not capture the mouse. Click Enter the Castle to retry.",
+            "Could not capture the mouse. " +
+                "Click Enter or Resume to retry.",
             error
         );
     }
-});
+}
 
 // ========================================
 // MARK: Keyboard input
 // ========================================
 
 window.addEventListener("keydown", (event: KeyboardEvent) => {
-    if (!isPlaying) {
+    if (!ui.isPlaying) {
         return;
     }
 
@@ -177,7 +178,7 @@ window.addEventListener("keyup", (event: KeyboardEvent) => {
 
 document.addEventListener("mousemove", (event: MouseEvent) => {
     if (
-        !isPlaying ||
+        !ui.isPlaying ||
         document.pointerLockElement !== canvas
     ) {
         return;
@@ -192,19 +193,29 @@ document.addEventListener("mousemove", (event: MouseEvent) => {
 
 document.addEventListener("pointerlockchange", () => {
     if (document.pointerLockElement === canvas) {
-        enterGame();
-    } else {
-        showMenu();
+        clearHeldKeys();
 
-        enterButton.focus();
+        previousTime = null;
+
+        ui.showPlaying();
+        return;
+    }
+
+    if (ui.isPlaying) {
+        ui.showPause();
     }
 });
 
 document.addEventListener("pointerlockerror", () => {
-    showMenu();
+    if (ui.isPlaying) {
+        ui.showPause();
+    }
+
+    ui.focusPrimaryAction();
 
     console.error(
-        "Pointer lock failed. Click Enter the Castle to try again."
+        "Pointer lock failed. " +
+            "Click Enter or Resume to try again."
     );
 });
 
@@ -212,13 +223,21 @@ document.addEventListener("pointerlockerror", () => {
 // MARK: Window focus
 // ========================================
 
-window.addEventListener("blur", () => {
-    showMenu();
+function pauseExperience(): void {
+    clearHeldKeys();
+
+    if (ui.isPlaying) {
+        ui.showPause();
+    }
 
     if (document.pointerLockElement === canvas) {
         document.exitPointerLock();
     }
-});
+
+    previousTime = null;
+}
+
+window.addEventListener("blur", pauseExperience);
 
 // ========================================
 // MARK: Page visibility / audio
@@ -226,13 +245,7 @@ window.addEventListener("blur", () => {
 
 document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-        showMenu();
-
-        if (document.pointerLockElement === canvas) {
-            document.exitPointerLock();
-        }
-
-        previousTime = null;
+        pauseExperience();
     }
 
     void rainAudio
@@ -240,7 +253,7 @@ document.addEventListener("visibilitychange", () => {
         .catch((error: unknown) => {
             console.warn(
                 "Could not change audio playback state. " +
-                    "Use Enter the Castle to resume audio.",
+                    "Use Enter or Resume to retry.",
                 error
             );
         });
@@ -291,7 +304,9 @@ if (volumeSlider) {
     volumeSlider.value = String(rainAudio.volume);
 
     volumeSlider.addEventListener("input", () => {
-        rainAudio.setVolume(Number(volumeSlider.value));
+        rainAudio.setVolume(
+            Number(volumeSlider.value)
+        );
     });
 }
 
@@ -312,12 +327,10 @@ function gameLoop(timestamp: number): void {
 
     previousTime = timestamp;
 
-    // Player movement is disabled while a menu is open.
-    if (isPlaying) {
+    if (ui.isPlaying) {
         player.update(map, deltaTime);
     }
 
-    // Keep the environment and weather active behind the menu.
     environment.update(player, map);
 
     rainAudio.update(
@@ -382,7 +395,5 @@ function gameLoop(timestamp: number): void {
 // ========================================
 // MARK: Initial state
 // ========================================
-
-showMenu();
 
 requestAnimationFrame(gameLoop);

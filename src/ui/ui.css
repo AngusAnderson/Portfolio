@@ -314,3 +314,24 @@
 		transition: none;
 	}
 }
+
+/* ========================================
+   Disabled button styling
+======================================== */
+
+.start-menu__button:disabled,
+.start-menu__text-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.start-menu__button--secondary:disabled:hover {
+    color: var(--menu-text);
+    background: rgb(255 255 255 / 3%);
+    border-color: rgb(255 255 255 / 13%);
+}
+
+.start-menu__text-button:disabled:hover {
+    color: var(--menu-accent);
+    text-decoration-color: transparent;
+}
