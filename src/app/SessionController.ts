@@ -229,4 +229,8 @@ export class SessionController {
             }
         );
     }
+
+    public pause(): void {
+        this.pauseExperience();
+    }
 }

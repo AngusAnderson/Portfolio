@@ -160,4 +160,16 @@ export class Raycaster {
 
 		return rainDepth < sceneDepth - 0.01;
 	}
+
+	public getWorldCamera(): CameraState {
+		return this.getRainCamera();
+	}
+
+	public isWorldPointVisible(
+		screenX: number,
+		screenY: number,
+		depth: number
+	): boolean {
+		return this.isRainVisibleAt(screenX, screenY, depth);
+	}
 }

@@ -9,6 +9,12 @@ import { createGameCanvas } from "./createCanvas";
 import { AppSettings } from "./AppSettings";
 import { SessionController } from "./SessionController";
 
+import { PROJECTS } from "../data/projects";
+
+import { createDemoPainting } from "../engine/projects/createDemoPainting";
+
+import { ProjectSystem } from "../engine/projects/ProjectSystem";
+
 export class Game {
     private readonly canvas: HTMLCanvasElement;
     private readonly context: CanvasRenderingContext2D;
@@ -26,6 +32,8 @@ export class Game {
 
     private previousTime: number | null = null;
     private frameId: number | null = null;
+
+    private readonly projects: ProjectSystem;
 
     constructor() {
         const { canvas, context } = createGameCanvas();
@@ -76,6 +84,47 @@ export class Game {
 
             onResetTime: () => {
                 this.previousTime = null;
+            },
+        });
+
+        const firstProject = PROJECTS[0];
+
+        const demoPainting = firstProject
+            ? createDemoPainting(
+                this.map,
+                this.player,
+                firstProject,
+                "keep-gallery"
+            )
+            : null;
+
+        if (firstProject && !demoPainting) {
+            console.warn(
+                "Could not find a suitable wall for the demo painting."
+            );
+        }
+
+        if (demoPainting) {
+            console.info(
+                "Demo painting position:",
+                {
+                    x: demoPainting.x,
+                    y: demoPainting.y,
+                    normalAngle: demoPainting.normalAngle,
+                }
+            );
+        }
+
+        this.projects = new ProjectSystem({
+            paintings: demoPainting ? [demoPainting] : [],
+
+            view: this.raycaster,
+            canvas: this.canvas,
+
+            isPlaying: () => this.session.isPlaying,
+
+            onOpenProject: () => {
+                this.session.pause();
             },
         });
     }
@@ -133,11 +182,11 @@ export class Game {
             this.player
         );
 
-        // Keep particles moving behind menus and
-        // while visual rain is disabled.
         this.rainRenderer.update(deltaTime);
 
         this.raycaster.castAllRays();
+
+        this.projects.update();
     }
 
     private render(): void {
@@ -148,6 +197,8 @@ export class Game {
         // this.player.render(this.context);
 
         this.raycaster.render(this.context);
+
+        this.projects.render(this.context);
 
         if (this.settings.showRain) {
             this.rainRenderer.render(
