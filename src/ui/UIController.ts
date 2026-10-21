@@ -11,9 +11,10 @@ import {
 export type AppState =
     | "start"
     | "playing"
-    | "paused";
+    | "paused"
+    | "project";
 
-export type MenuState = Exclude<AppState, "playing">;
+export type MenuState = "start" | "paused";
 
 export type UIControllerOptions = {
     onRequestPlay: () => void;
@@ -92,7 +93,10 @@ export class UIController {
     }
 
     public focusPrimaryAction(): void {
-        if (this.isPlaying) {
+        if (
+            this.currentState === "playing" ||
+            this.currentState === "project"
+        ) {
             return;
         }
 
@@ -249,5 +253,14 @@ export class UIController {
         button.addEventListener("click", () => {
             handler();
         });
+    }
+
+    public showProject(): void {
+        this.currentState = "project";
+
+        this.closePanels();
+
+        this.startMenu.hidden = true;
+        this.pauseMenu.hidden = true;
     }
 }

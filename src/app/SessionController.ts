@@ -21,6 +21,9 @@ export class SessionController {
     private readonly heldKeys =
         new Map<string, KeyboardEvent>();
 
+    private ignoreNextUnlock = false;
+    private allowUnlockedPlay = false;
+
     constructor(options: SessionControllerOptions) {
         this.options = options;
 
@@ -53,6 +56,55 @@ export class SessionController {
         return this.ui.isPlaying;
     }
 
+    public pause(): void {
+        this.pauseExperience();
+    }
+
+    public openProject(): void {
+        if (!this.ui.isPlaying) {
+            return;
+        }
+
+        this.clearHeldKeys();
+
+        // Change state before releasing the mouse.
+        // The unlock event must not open the pause menu.
+        this.ui.showProject();
+
+        this.releasePointer();
+
+        this.options.onResetTime();
+    }
+
+    public closeProject(): void {
+        if (this.ui.state !== "project") {
+            return;
+        }
+
+        this.clearHeldKeys();
+
+        this.options.onResetTime();
+
+        // Do not resume into an unfocused or hidden page.
+        if (document.hidden || !document.hasFocus()) {
+            this.allowUnlockedPlay = false;
+            this.ui.showPause();
+            return;
+        }
+
+        // Return directly to the world.
+        this.ui.showPlaying();
+
+        // Some browsers may reject immediate mouse recapture.
+        // Keep the world visible if that happens.
+        this.allowUnlockedPlay = true;
+
+        this.options.canvas.title =
+            "Click to resume mouse look";
+
+        void this.requestPlay();
+    }
+
     private clearHeldKeys(): void {
         for (const event of this.heldKeys.values()) {
             this.options.player.handleKeyUp(
@@ -72,6 +124,8 @@ export class SessionController {
             document.pointerLockElement ===
             this.options.canvas
         ) {
+            this.ignoreNextUnlock = true;
+
             document.exitPointerLock();
         }
     }
@@ -81,12 +135,21 @@ export class SessionController {
 
         this.options.onResetTime();
 
+        this.ignoreNextUnlock = false;
+        this.allowUnlockedPlay = false;
+
+        this.options.canvas.removeAttribute("title");
+
         this.ui.showPlaying();
     }
 
     private pauseExperience(): void {
         this.clearHeldKeys();
 
+        this.allowUnlockedPlay = false;
+
+        // Leave an open project dialog in place when the
+        // visitor switches tabs or windows.
         if (this.ui.isPlaying) {
             this.ui.showPause();
         }
@@ -99,7 +162,6 @@ export class SessionController {
     private async requestPlay(): Promise<void> {
         const { canvas, rainAudio } = this.options;
 
-        // Keep pointer lock directly connected to the click.
         void rainAudio.start().catch((error: unknown) => {
             console.error(
                 "Could not start rain audio:",
@@ -115,6 +177,16 @@ export class SessionController {
         try {
             await canvas.requestPointerLock();
         } catch (error: unknown) {
+            if (this.allowUnlockedPlay) {
+                console.warn(
+                    "Mouse capture was not restored. " +
+                        "Click the game to resume mouse look.",
+                    error
+                );
+
+                return;
+            }
+
             this.ui.focusPrimaryAction();
 
             console.error(
@@ -130,6 +202,19 @@ export class SessionController {
             "keydown",
             (event: KeyboardEvent) => {
                 if (!this.ui.isPlaying) {
+                    return;
+                }
+
+                // Escape must still pause when gameplay has
+                // resumed but mouse capture was not restored.
+                if (
+                    event.code === "Escape" &&
+                    document.pointerLockElement !==
+                        this.options.canvas
+                ) {
+                    event.preventDefault();
+
+                    this.pauseExperience();
                     return;
                 }
 
@@ -168,6 +253,18 @@ export class SessionController {
                 this.options.player.handleMouseMove(event);
             }
         );
+
+        this.options.canvas.addEventListener("click", () => {
+            if (
+                !this.ui.isPlaying ||
+                document.pointerLockElement ===
+                    this.options.canvas
+            ) {
+                return;
+            }
+
+            void this.requestPlay();
+        });
     }
 
     private bindPointerLock(): void {
@@ -178,7 +275,23 @@ export class SessionController {
                     document.pointerLockElement ===
                     this.options.canvas
                 ) {
+                    // Do not allow a delayed capture request
+                    // to dismiss a project dialog.
+                    if (this.ui.state === "project") {
+                        this.releasePointer();
+                        return;
+                    }
+
                     this.enterGame();
+                    return;
+                }
+
+                if (this.ignoreNextUnlock) {
+                    this.ignoreNextUnlock = false;
+                    return;
+                }
+
+                if (this.allowUnlockedPlay) {
                     return;
                 }
 
@@ -191,6 +304,14 @@ export class SessionController {
         document.addEventListener(
             "pointerlockerror",
             () => {
+                if (this.allowUnlockedPlay) {
+                    console.warn(
+                        "Click the game to resume mouse look."
+                    );
+
+                    return;
+                }
+
                 if (this.ui.isPlaying) {
                     this.ui.showPause();
                 }
@@ -221,16 +342,11 @@ export class SessionController {
                     .setPageVisible(!document.hidden)
                     .catch((error: unknown) => {
                         console.warn(
-                            "Could not change audio playback state. " +
-                                "Use Enter or Resume to retry.",
+                            "Could not change audio playback state.",
                             error
                         );
                     });
             }
         );
-    }
-
-    public pause(): void {
-        this.pauseExperience();
     }
 }

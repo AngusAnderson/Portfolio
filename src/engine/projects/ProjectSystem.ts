@@ -17,7 +17,9 @@ type ProjectSystemOptions = {
     canvas: HTMLCanvasElement;
 
     isPlaying: () => boolean;
+
     onOpenProject: () => void;
+    onCloseProject: () => void;
 };
 
 export class ProjectSystem {
@@ -39,6 +41,10 @@ export class ProjectSystem {
             this.hud.element,
             this.panel.dialog
         );
+        
+        this.panel.dialog.addEventListener("close", () => {
+            this.options.onCloseProject();
+        });
 
         window.addEventListener(
             "keydown",

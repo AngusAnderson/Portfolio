@@ -124,7 +124,11 @@ export class Game {
             isPlaying: () => this.session.isPlaying,
 
             onOpenProject: () => {
-                this.session.pause();
+                this.session.openProject();
+            },
+
+            onCloseProject: () => {
+                this.session.closeProject();
             },
         });
     }

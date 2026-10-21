@@ -22,7 +22,7 @@ export function createProjectPanel(): ProjectPanel {
         );
 
     if (backButton) {
-        backButton.textContent = "Back to pause menu";
+        backButton.textContent = "Back to exploring";
     }
 
     return {

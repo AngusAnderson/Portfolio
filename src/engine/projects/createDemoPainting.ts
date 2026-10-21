@@ -52,7 +52,6 @@ export function createDemoPainting(
         const normalX = Math.cos(normalAngle);
         const normalY = Math.sin(normalAngle);
 
-        // Sample the space in front of the wall.
         const roomX = x + normalX * TILESIZE * 0.5;
         const roomY = y + normalY * TILESIZE * 0.5;
 
