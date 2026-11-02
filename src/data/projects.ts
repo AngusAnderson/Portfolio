@@ -1,14 +1,6 @@
-export type Project = {
-    id: string;
-    title: string;
-    description: string;
+import type { Project } from "../types/project";
 
-    technologies: string[];
-
-    image?: string;
-    projectUrl?: string;
-    sourceUrl?: string;
-};
+export type { Project } from "../types/project";
 
 export const PROJECTS: Project[] = [
     {
@@ -26,8 +18,12 @@ export const PROJECTS: Project[] = [
         ],
 
         // Optional:
-        // image: `${import.meta.env.BASE_URL}assets/projects/example.jpg`,
+        image: `${import.meta.env.BASE_URL}assets/projects/test.jpeg`,
         // projectUrl: "",
-        // sourceUrl: "",
+        sourceUrl: "https://github.com/AngusAnderson/Portfolio",
     },
 ];
+
+export function getProjectById(id: Project["id"]): Project | undefined {
+    return PROJECTS.find((project) => project.id === id);
+}
