@@ -6,6 +6,7 @@ import { RainAudio } from "../engine/audio";
 import { RainRenderer } from "../engine/weather";
 import { AtmosphereRenderer } from "../engine/weather/AtmosphereRenderer";
 import { ScenerySystem } from "../engine/scenery/ScenerySystem";
+import { PropSystem } from "../engine/props/PropSystem";
 import { createGameCanvas } from "./createCanvas";
 import { AppSettings } from "./AppSettings";
 import { SessionController } from "./SessionController";
@@ -26,6 +27,7 @@ export class Game {
     private readonly session: SessionController;
     private readonly projects: ProjectSystem;
     private readonly scenery: ScenerySystem;
+    private readonly props: PropSystem;
     private readonly atmosphere = new AtmosphereRenderer();
     private previousTime: number | null = null;
     private frameId: number | null = null;
@@ -38,6 +40,7 @@ export class Game {
         this.player = new Player();
         this.raycaster = new Raycaster(this.player, this.map);
         this.scenery = new ScenerySystem(this.map);
+        this.props = new PropSystem(this.raycaster);
         this.environment = new EnvironmentSystem();
         this.environment.update(this.player, this.map);
         this.rainAudio = new RainAudio();
@@ -59,7 +62,7 @@ export class Game {
         );
         this.projects = new ProjectSystem({
             paintings,
-            view: this.raycaster,
+            view: this.props,
             canvas: this.canvas,
             isPlaying: () => this.session.isPlaying,
             onOpenProject: () => this.session.openProject(),
@@ -88,13 +91,15 @@ export class Game {
         this.rainAudio.update(this.environment.current, this.player);
         this.rainRenderer.update(deltaTime);
         this.raycaster.castAllRays();
+        this.props.prepare(this.canvas.width, this.canvas.height);
         this.projects.update();
     }
 
     private render(): void {
         this.atmosphere.renderBackground(this.context, this.raycaster.getWorldCamera());
         this.raycaster.render(this.context);
-        this.scenery.render(this.context, this.raycaster);
+        this.scenery.render(this.context, this.props);
+        this.props.render(this.context);
         this.projects.render(this.context);
         if (this.settings.showRain) this.rainRenderer.render(this.context, this.raycaster);
         this.atmosphere.renderOverlay(this.context);
