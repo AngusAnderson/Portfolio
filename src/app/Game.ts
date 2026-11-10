@@ -5,6 +5,8 @@ import { EnvironmentSystem } from "../engine/environment";
 import { RainAudio } from "../engine/audio";
 import { RainRenderer } from "../engine/weather";
 
+import { AtmosphereRenderer } from "../engine/weather/AtmosphereRenderer";
+
 import { createGameCanvas } from "./createCanvas";
 import { AppSettings } from "./AppSettings";
 import { SessionController } from "./SessionController";
@@ -12,10 +14,7 @@ import { SessionController } from "./SessionController";
 import { PROJECTS } from "../data/projects";
 
 import { createProjectPaintings } from "../engine/projects/createProjectPainting";
-
 import { ProjectSystem } from "../engine/projects/ProjectSystem";
-
-import { AtmosphereRenderer } from "../engine/weather/AtmosphereRenderer";
 
 export class Game {
     private readonly canvas: HTMLCanvasElement;
@@ -32,12 +31,13 @@ export class Game {
     private readonly settings: AppSettings;
     private readonly session: SessionController;
 
-    private previousTime: number | null = null;
-    private frameId: number | null = null;
-
     private readonly projects: ProjectSystem;
 
-    private readonly atmosphere = new AtmosphereRenderer();
+    private readonly atmosphere =
+        new AtmosphereRenderer();
+
+    private previousTime: number | null = null;
+    private frameId: number | null = null;
 
     constructor() {
         const { canvas, context } = createGameCanvas();
@@ -88,16 +88,8 @@ export class Game {
 
             onResetTime: () => {
                 this.previousTime = null;
-            }
+            },
         });
-
-        console.table(
-            PROJECTS.map((project) => ({
-                id: project.id,
-                title: project.title,
-                description: project.description
-            }))
-        );
 
         const paintings = createProjectPaintings(
             this.map,
@@ -115,7 +107,6 @@ export class Game {
 
         this.projects = new ProjectSystem({
             paintings,
-
             view: this.raycaster,
             canvas: this.canvas,
 
@@ -127,7 +118,7 @@ export class Game {
 
             onCloseProject: () => {
                 this.session.closeProject();
-            }
+            },
         });
     }
 
@@ -137,11 +128,12 @@ export class Game {
         }
 
         this.previousTime = null;
-
         this.frameId = requestAnimationFrame(this.frame);
     }
 
-    private readonly frame = (timestamp: number): void => {
+    private readonly frame = (
+        timestamp: number
+    ): void => {
         const deltaTime = this.getDeltaTime(timestamp);
 
         this.update(deltaTime);
@@ -213,7 +205,7 @@ export class Game {
     private renderBackground(): void {
         this.atmosphere.renderBackground(
             this.context,
-            this.raycaster.horizonY
+            this.raycaster.getWorldCamera()
         );
     }
 }
