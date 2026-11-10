@@ -1,175 +1,199 @@
-import { FOV, NUM_RAYS, RES, WINDOW_HEIGHT } from "../../settings";
+import {
+    FOV,
+    NUM_RAYS,
+    RES,
+    WINDOW_HEIGHT,
+} from "../../settings";
 
 import type { GameMap } from "../map";
 import type { Player } from "../player";
 
 import {
-	createCameraState,
-	getHorizonY,
+    createCameraState,
+    getHorizonY,
 } from "./camera";
 
 import { castColumn } from "./castColumn";
+import { renderGround } from "./groundRenderer";
 import { renderWalls } from "./wallRenderer";
 import { renderSurfaces } from "./surfaceRenderer";
 import { WallTexture } from "./textures";
 import { getRainSceneDepth } from "./rainVisibility";
 
-import type { WallSegment, CameraState } from "./types";
+import type {
+    WallSegment,
+    CameraState,
+} from "./types";
 
 export class Raycaster {
-	private player: Player;
-	private map: GameMap;
+    private readonly player: Player;
+    private readonly map: GameMap;
 
-	private columns: WallSegment[][] = [];
+    private columns: WallSegment[][] = [];
 
-	private wallTexture: WallTexture;
+    private readonly wallTexture: WallTexture;
+    private readonly projectionDistance = 415;
 
-	private projectionDistance = 415;
+    private rainCamera: CameraState | null = null;
 
-	private rainCamera: CameraState | null = null;
-	private readonly rainDepthCache = new Map<number, number>();
+    private readonly rainDepthCache =
+        new Map<number, number>();
 
-	constructor(player: Player, map: GameMap) {
-		this.player = player;
-		this.map = map;
+    constructor(player: Player, map: GameMap) {
+        this.player = player;
+        this.map = map;
 
-		this.wallTexture = new WallTexture(
-			`${import.meta.env.BASE_URL}assets/textures/castle-stone.png`
-		);
-	}
+        this.wallTexture = new WallTexture(
+            `${import.meta.env.BASE_URL}assets/textures/castle-stone.png`
+        );
+    }
 
-	public castAllRays(): void {
-		this.columns = [];
+    public castAllRays(): void {
+        this.columns = [];
 
-		const camera = createCameraState(
-			this.player,
-			this.projectionDistance
-		);
+        const camera = createCameraState(
+            this.player,
+            this.projectionDistance
+        );
 
-		this.rainCamera = camera;
-		this.rainDepthCache.clear();
+        this.rainCamera = camera;
+        this.rainDepthCache.clear();
 
-		for (let column = 0; column < NUM_RAYS; column++) {
-			const cameraX =
-				2 * ((column + 0.5) / NUM_RAYS) - 1;
+        const halfFovTangent = Math.tan(FOV / 2);
 
-			const rayOffset = Math.atan(
-				cameraX * Math.tan(FOV / 2)
-			);
+        for (
+            let column = 0;
+            column < NUM_RAYS;
+            column++
+        ) {
+            const cameraX =
+                2 * ((column + 0.5) / NUM_RAYS) - 1;
 
-			const rayAngle =
-				camera.rotationAngle + rayOffset;
+            const rayOffset = Math.atan(
+                cameraX * halfFovTangent
+            );
 
-			const correction = Math.cos(rayOffset);
+            const rayAngle =
+                camera.rotationAngle + rayOffset;
 
-			this.columns.push(
-				castColumn(
-					this.map,
-					camera,
-					rayAngle,
-					correction
-				)
-			);
-		}
-	}
+            const correction = Math.cos(rayOffset);
 
-	public render(context: CanvasRenderingContext2D): void {
-		const camera = createCameraState(
-			this.player,
-			this.projectionDistance
-		);
+            this.columns.push(
+                castColumn(
+                    this.map,
+                    camera,
+                    rayAngle,
+                    correction
+                )
+            );
+        }
+    }
 
-		context.save();
+    public render(
+        context: CanvasRenderingContext2D
+    ): void {
+        const camera = this.getWorldCamera();
 
-		context.imageSmoothingEnabled = false;
-		context.globalAlpha = 1;
-		context.globalCompositeOperation = "source-over";
+        context.save();
 
-		renderWalls(
-			context,
-			this.columns,
-			camera,
-			this.wallTexture
-		);
+        context.imageSmoothingEnabled = false;
+        context.globalAlpha = 1;
+        context.globalCompositeOperation = "source-over";
 
-		renderSurfaces(
-			context,
-			this.map,
-			this.columns,
-			camera
-		);
+        renderGround(
+            context,
+            camera
+        );
 
-		context.restore();
-	}
+        renderWalls(
+            context,
+            this.columns,
+            camera,
+            this.wallTexture
+        );
 
-	public get horizonY(): number {
-		return getHorizonY(
-			this.player.pitch,
-			this.projectionDistance
-		);
-	}
+        renderSurfaces(
+            context,
+            this.map,
+            this.columns,
+            camera
+        );
 
-	public getRainCamera(): CameraState {
-		return this.rainCamera ?? createCameraState(
-			this.player,
-			this.projectionDistance
-		);
-	}
+        context.restore();
+    }
 
-	public isRainVisibleAt(
-		screenX: number,
-		screenY: number,
-		rainDepth: number
-	): boolean {
-		if (
-			!Number.isFinite(screenX) ||
-			!Number.isFinite(screenY) ||
-			!Number.isFinite(rainDepth) ||
-			rainDepth <= 0
-		) {
-			return false;
-		}
+    public get horizonY(): number {
+        return getHorizonY(
+            this.player.pitch,
+            this.projectionDistance
+        );
+    }
 
-		const column = Math.floor(screenX / RES);
-		const row = Math.floor(screenY);
+    public getRainCamera(): CameraState {
+        return this.rainCamera ?? createCameraState(
+            this.player,
+            this.projectionDistance
+        );
+    }
 
-		if (
-			column < 0 ||
-			column >= NUM_RAYS ||
-			row < 0 ||
-			row >= WINDOW_HEIGHT
-		) {
-			return false;
-		}
+    public getWorldCamera(): CameraState {
+        return this.getRainCamera();
+    }
 
-		const key = row * NUM_RAYS + column;
+    public isRainVisibleAt(
+        screenX: number,
+        screenY: number,
+        rainDepth: number
+    ): boolean {
+        if (
+            !Number.isFinite(screenX) ||
+            !Number.isFinite(screenY) ||
+            !Number.isFinite(rainDepth) ||
+            rainDepth <= 0
+        ) {
+            return false;
+        }
 
-		let sceneDepth = this.rainDepthCache.get(key);
+        const column = Math.floor(screenX / RES);
+        const row = Math.floor(screenY);
 
-		if (sceneDepth === undefined) {
-			sceneDepth = getRainSceneDepth(
-				column,
-				row,
-				this.map,
-				this.columns,
-				this.getRainCamera()
-			);
+        if (
+            column < 0 ||
+            column >= NUM_RAYS ||
+            row < 0 ||
+            row >= WINDOW_HEIGHT
+        ) {
+            return false;
+        }
 
-			this.rainDepthCache.set(key, sceneDepth);
-		}
+        const key = row * NUM_RAYS + column;
 
-		return rainDepth < sceneDepth - 0.01;
-	}
+        let sceneDepth = this.rainDepthCache.get(key);
 
-	public getWorldCamera(): CameraState {
-		return this.getRainCamera();
-	}
+        if (sceneDepth === undefined) {
+            sceneDepth = getRainSceneDepth(
+                column,
+                row,
+                this.map,
+                this.columns,
+                this.getRainCamera()
+            );
 
-	public isWorldPointVisible(
-		screenX: number,
-		screenY: number,
-		depth: number
-	): boolean {
-		return this.isRainVisibleAt(screenX, screenY, depth);
-	}
+            this.rainDepthCache.set(key, sceneDepth);
+        }
+
+        return rainDepth < sceneDepth - 0.01;
+    }
+
+    public isWorldPointVisible(
+        screenX: number,
+        screenY: number,
+        depth: number
+    ): boolean {
+        return this.isRainVisibleAt(
+            screenX,
+            screenY,
+            depth
+        );
+    }
 }
