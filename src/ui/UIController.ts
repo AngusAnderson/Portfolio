@@ -219,9 +219,16 @@ export class UIController {
         this.bindAction(
             this.startMenu,
             "projects",
-            onProjects
-                ? () => onProjects("start")
-                : undefined
+            () => {
+                if (onProjects) {
+                    onProjects("start");
+                    return;
+                }
+
+                this.startMenu.dispatchEvent(
+                    new Event("open-project-archive")
+                );
+            }
         );
     }
 
