@@ -9,6 +9,12 @@ import { createGameCanvas } from "./createCanvas";
 import { AppSettings } from "./AppSettings";
 import { SessionController } from "./SessionController";
 
+import { PROJECTS } from "../data/projects";
+
+import { createProjectPaintings } from "../engine/projects/createProjectPainting";
+
+import { ProjectSystem } from "../engine/projects/ProjectSystem";
+
 export class Game {
     private readonly canvas: HTMLCanvasElement;
     private readonly context: CanvasRenderingContext2D;
@@ -26,6 +32,8 @@ export class Game {
 
     private previousTime: number | null = null;
     private frameId: number | null = null;
+
+    private readonly projects: ProjectSystem;
 
     constructor() {
         const { canvas, context } = createGameCanvas();
@@ -76,7 +84,46 @@ export class Game {
 
             onResetTime: () => {
                 this.previousTime = null;
+            }
+        });
+
+        console.table(
+            PROJECTS.map((project) => ({
+                id: project.id,
+                title: project.title,
+                description: project.description
+            }))
+        );
+
+        const paintings = createProjectPaintings(
+            this.map,
+            this.player,
+            PROJECTS,
+            "keep-gallery",
+            6
+        );
+
+        if (paintings.length === 0) {
+            console.warn(
+                "Could not find suitable walls for project paintings."
+            );
+        }
+
+        this.projects = new ProjectSystem({
+            paintings,
+
+            view: this.raycaster,
+            canvas: this.canvas,
+
+            isPlaying: () => this.session.isPlaying,
+
+            onOpenProject: () => {
+                this.session.openProject();
             },
+
+            onCloseProject: () => {
+                this.session.closeProject();
+            }
         });
     }
 
@@ -133,21 +180,19 @@ export class Game {
             this.player
         );
 
-        // Keep particles moving behind menus and
-        // while visual rain is disabled.
         this.rainRenderer.update(deltaTime);
 
         this.raycaster.castAllRays();
+
+        this.projects.update();
     }
 
     private render(): void {
         this.renderBackground();
 
-        // Uncomment these for the top-down debugging view:
-        // this.map.render(this.context);
-        // this.player.render(this.context);
-
         this.raycaster.render(this.context);
+
+        this.projects.render(this.context);
 
         if (this.settings.showRain) {
             this.rainRenderer.render(
