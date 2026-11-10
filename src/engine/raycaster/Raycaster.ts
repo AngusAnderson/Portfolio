@@ -13,6 +13,7 @@ import { renderWalls } from "./wallRenderer";
 import { renderSurfaces } from "./surfaceRenderer";
 import { WallTexture } from "./textures";
 import { getRainSceneDepth } from "./rainVisibility";
+import { renderGround } from "./groundRenderer";
 
 import type { WallSegment, CameraState } from "./types";
 
@@ -91,6 +92,25 @@ export class Raycaster {
 			camera,
 			this.wallTexture
 		);
+
+		renderGround(
+            context,
+            camera
+        );
+
+        renderWalls(
+            context,
+            this.columns,
+            camera,
+            this.wallTexture
+        );
+
+        renderSurfaces(
+            context,
+            this.map,
+            this.columns,
+            camera
+        );
 
 		renderSurfaces(
 			context,

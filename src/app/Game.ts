@@ -15,6 +15,8 @@ import { createProjectPaintings } from "../engine/projects/createProjectPainting
 
 import { ProjectSystem } from "../engine/projects/ProjectSystem";
 
+import { AtmosphereRenderer } from "../engine/weather/AtmosphereRenderer";
+
 export class Game {
     private readonly canvas: HTMLCanvasElement;
     private readonly context: CanvasRenderingContext2D;
@@ -34,6 +36,8 @@ export class Game {
     private frameId: number | null = null;
 
     private readonly projects: ProjectSystem;
+
+    private readonly atmosphere = new AtmosphereRenderer();
 
     constructor() {
         const { canvas, context } = createGameCanvas();
@@ -200,36 +204,16 @@ export class Game {
                 this.raycaster
             );
         }
+
+        this.atmosphere.renderOverlay(
+            this.context
+        );
     }
 
     private renderBackground(): void {
-        const width = this.canvas.width;
-        const height = this.canvas.height;
-
-        const horizon = Math.max(
-            0,
-            Math.min(
-                height,
-                this.raycaster.horizonY
-            )
-        );
-
-        this.context.fillStyle = "#252530";
-
-        this.context.fillRect(
-            0,
-            0,
-            width,
-            horizon
-        );
-
-        this.context.fillStyle = "#454039";
-
-        this.context.fillRect(
-            0,
-            horizon,
-            width,
-            height - horizon
+        this.atmosphere.renderBackground(
+            this.context,
+            this.raycaster.horizonY
         );
     }
 }

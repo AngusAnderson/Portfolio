@@ -21,6 +21,11 @@ import type {
 	WallSegment,
 } from "./types";
 
+import {
+    sampleGroundColour,
+    shadeColour,
+} from "./atmosphere";
+
 export function renderSurfaces(
 	context: CanvasRenderingContext2D,
 	map: GameMap,
@@ -113,36 +118,22 @@ export function renderSurfaces(
 				continue;
 			}
 
-			const checkerSize = TILESIZE / 4;
+			context.fillStyle = shadeColour(
+                sampleGroundColour(
+                    nearestHit.x,
+                    nearestHit.y,
+                    nearestHit.isTop
+                ),
+                nearestHit.distance,
+                nearestHit.isTop ? 1 : 0.75
+            );
 
-			const checker =
-				(
-					Math.floor(nearestHit.x / checkerSize) +
-					Math.floor(nearestHit.y / checkerSize)
-				) % 2;
-
-			const baseColour = nearestHit.isTop
-				? (checker === 0 ? 155 : 115)
-				: 85;
-
-			const brightness = Math.max(
-				0.2,
-				Math.min(1, 100 / nearestHit.distance)
-			);
-
-			const shade = Math.round(
-				baseColour * brightness
-			);
-
-			context.fillStyle =
-				`rgb(${shade}, ${shade}, ${shade})`;
-
-			context.fillRect(
-				column * RES,
-				screenY,
-				RES,
-				1
-			);
+            context.fillRect(
+                column * RES,
+                screenY,
+                RES,
+                1
+            );
 		}
 	}
 }
