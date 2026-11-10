@@ -1,31 +1,33 @@
 import { FOV, RES, TILESIZE } from "../../settings";
 import type { ProjectCamera, ProjectView } from "../projects/types";
-import { noise, shadeColour, ATMOSPHERE } from "../raycaster/atmosphere";
+import { noise, shadeColour, ATMOSPHERE, fogAmount } from "../raycaster/atmosphere";
 import { PROP_BOXES, type PropBox } from "./definitions";
 
 const ROW_STEP = 2;
 const NEAR = 0.1;
-
 type Hit = { depth: number; axis: number; };
 
 export function intersectPropBox(
-    box: PropBox,
-    ox: number, oy: number, oz: number,
-    dx: number, dy: number, dz: number
+    box: PropBox, ox: number, oy: number, oz: number,
+    dx: number, dy: number, dz: number,
+    cosine: number = Math.cos(box.rotation ?? 0),
+    sine: number = Math.sin(box.rotation ?? 0)
 ): Hit | null {
+    const relativeX = ox - box.x;
+    const relativeY = oy - box.y;
+    const lx = relativeX * cosine + relativeY * sine;
+    const ly = -relativeX * sine + relativeY * cosine;
+    const ldx = dx * cosine + dy * sine;
+    const ldy = -dx * sine + dy * cosine;
     let near = -Infinity;
     let far = Infinity;
     let nearAxis = 0;
     let farAxis = 0;
-    const origins = [ox, oy, oz];
-    const directions = [dx, dy, dz];
-    const lows = [box.x - box.width / 2, box.y - box.depth / 2, box.z];
-    const highs = [box.x + box.width / 2, box.y + box.depth / 2, box.z + box.height];
     for (let axis = 0; axis < 3; axis++) {
-        const origin = origins[axis]!;
-        const direction = directions[axis]!;
-        const low = lows[axis]!;
-        const high = highs[axis]!;
+        const origin = axis === 0 ? lx : axis === 1 ? ly : oz;
+        const direction = axis === 0 ? ldx : axis === 1 ? ldy : dz;
+        const low = axis === 0 ? -box.width / 2 : axis === 1 ? -box.depth / 2 : box.z;
+        const high = axis === 0 ? box.width / 2 : axis === 1 ? box.depth / 2 : box.z + box.height;
         if (Math.abs(direction) < 0.000001) {
             if (origin < low || origin > high) return null;
             continue;
@@ -53,30 +55,23 @@ export class PropSystem implements ProjectView {
     private camera: ProjectCamera | null = null;
     private previousPose = "";
     private readonly colours = new Map<string, readonly [number, number, number]>();
-
     constructor(private readonly world: ProjectView) {}
 
-    public getWorldCamera(): ProjectCamera {
-        return this.world.getWorldCamera();
-    }
+    public getWorldCamera(): ProjectCamera { return this.world.getWorldCamera(); }
 
     public isWorldPointVisible(x: number, y: number, depth: number): boolean {
         if (!this.world.isWorldPointVisible(x, y, depth)) return false;
         const column = Math.floor(x / RES);
         const row = Math.floor(y / ROW_STEP);
         if (column < 0 || column >= this.columns || row < 0 || row >= this.rows) return true;
-        const stored = this.depths[row * this.columns + column] ?? Infinity;
-        return depth < stored - 0.01;
+        return depth < (this.depths[row * this.columns + column] ?? Infinity) - 0.01;
     }
-
-    public invalidate(): void {
-        this.previousPose = "";
-    }
+    public invalidate(): void { this.previousPose = ""; }
 
     public prepare(width: number, height: number): void {
-        const current = this.world.getWorldCamera();
-        const pose = [width, height, current.x, current.y, current.cameraHeight,
-            current.rotationAngle, current.horizonY, current.projectionDistance].join(":");
+        const camera = this.world.getWorldCamera();
+        const pose = [width, height, camera.x, camera.y, camera.cameraHeight,
+            camera.rotationAngle, camera.horizonY, camera.projectionDistance].join(":");
         if (pose === this.previousPose) return;
         this.previousPose = pose;
         const columns = Math.ceil(width / RES);
@@ -97,7 +92,6 @@ export class PropSystem implements ProjectView {
         if (!image) return;
         this.depths.fill(Infinity);
         image.data.fill(0);
-        const camera = this.world.getWorldCamera();
         this.camera = camera;
         const fx = Math.cos(camera.rotationAngle);
         const fy = Math.sin(camera.rotationAngle);
@@ -110,30 +104,32 @@ export class PropSystem implements ProjectView {
             this.directionsY[column] = fy + fx * cameraX * tangent;
         }
         for (const box of PROP_BOXES) {
-            const relativeX = box.x - camera.x;
-            const relativeY = box.y - camera.y;
-            if (Math.hypot(relativeX, relativeY) > ATMOSPHERE.fogEnd + Math.max(box.width, box.depth)) continue;
+            const rx = box.x - camera.x;
+            const ry = box.y - camera.y;
+            if (Math.hypot(rx, ry) > ATMOSPHERE.fogEnd + Math.max(box.width, box.depth)) continue;
+            const cosine = Math.cos(box.rotation ?? 0);
+            const sine = Math.sin(box.rotation ?? 0);
             let left = Infinity;
             let right = -Infinity;
             let top = Infinity;
             let bottom = -Infinity;
             let crossesNear = false;
             let inFront = false;
-            for (const sx of [-1, 1]) {
-                for (const sy of [-1, 1]) {
-                    const rx = relativeX + sx * box.width / 2;
-                    const ry = relativeY + sy * box.depth / 2;
-                    const depth = rx * fx + ry * fy;
-                    if (depth <= NEAR) { crossesNear = true; continue; }
-                    inFront = true;
-                    const projectedX = width / 2 + (-rx * fy + ry * fx) * projectionX / depth;
-                    left = Math.min(left, projectedX);
-                    right = Math.max(right, projectedX);
-                    const yTop = camera.horizonY - (box.z + box.height - camera.cameraHeight) * camera.projectionDistance / depth;
-                    const yBottom = camera.horizonY - (box.z - camera.cameraHeight) * camera.projectionDistance / depth;
-                    top = Math.min(top, yTop, yBottom);
-                    bottom = Math.max(bottom, yTop, yBottom);
-                }
+            for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+                const lx = sx * box.width / 2;
+                const ly = sy * box.depth / 2;
+                const vx = rx + lx * cosine - ly * sine;
+                const vy = ry + lx * sine + ly * cosine;
+                const depth = vx * fx + vy * fy;
+                if (depth <= NEAR) { crossesNear = true; continue; }
+                inFront = true;
+                const px = width / 2 + (-vx * fy + vy * fx) * projectionX / depth;
+                left = Math.min(left, px);
+                right = Math.max(right, px);
+                const yTop = camera.horizonY - (box.z + box.height - camera.cameraHeight) * camera.projectionDistance / depth;
+                const yBottom = camera.horizonY - (box.z - camera.cameraHeight) * camera.projectionDistance / depth;
+                top = Math.min(top, yTop, yBottom);
+                bottom = Math.max(bottom, yTop, yBottom);
             }
             if (!inFront) continue;
             if (crossesNear) { left = 0; right = width; top = 0; bottom = height; }
@@ -148,13 +144,13 @@ export class PropSystem implements ProjectView {
                 for (let row = firstRow; row <= lastRow; row++) {
                     const screenY = Math.min(height - 0.5, row * ROW_STEP + ROW_STEP / 2);
                     const dz = (camera.horizonY - screenY) / camera.projectionDistance;
-                    const hit = intersectPropBox(box, camera.x, camera.y, camera.cameraHeight, dx, dy, dz);
+                    const hit = intersectPropBox(box, camera.x, camera.y, camera.cameraHeight, dx, dy, dz, cosine, sine);
                     if (!hit) continue;
                     const index = row * columns + column;
                     if (hit.depth >= this.depths[index]!) continue;
                     if (!this.world.isWorldPointVisible(screenX, screenY, hit.depth)) continue;
                     this.depths[index] = hit.depth;
-                    const colour = this.sample(box, hit, dx, dy, dz);
+                    const colour = this.sample(box, hit, dx, dy, dz, cosine, sine);
                     const offset = index * 4;
                     image.data[offset] = colour[0];
                     image.data[offset + 1] = colour[1];
@@ -177,32 +173,49 @@ export class PropSystem implements ProjectView {
         context.restore();
     }
 
-    private sample(box: PropBox, hit: Hit, dx: number, dy: number, dz: number): readonly [number, number, number] {
+    private sample(box: PropBox, hit: Hit, dx: number, dy: number, dz: number, cosine: number, sine: number): readonly [number, number, number] {
         const camera = this.camera;
         if (!camera) return [0, 0, 0];
-        const x = (camera.x + dx * hit.depth) / TILESIZE;
-        const y = (camera.y + dy * hit.depth) / TILESIZE;
-        const z = (camera.cameraHeight + dz * hit.depth) / TILESIZE;
-        const grain = noise(Math.floor(x * 70), Math.floor(y * 70 + z * 70), 217);
+        const wx = camera.x + dx * hit.depth;
+        const wy = camera.y + dy * hit.depth;
+        const wz = camera.cameraHeight + dz * hit.depth;
+        const x = ((wx - box.x) * cosine + (wy - box.y) * sine) / TILESIZE;
+        const y = (-(wx - box.x) * sine + (wy - box.y) * cosine) / TILESIZE;
+        const z = wz / TILESIZE;
+        const grain = noise(Math.floor(wx / TILESIZE * 70), Math.floor(wy / TILESIZE * 70 + z * 70), 217);
         let base: readonly [number, number, number];
         switch (box.material) {
+            case "door": {
+                const plank = (x / (box.width / TILESIZE) + 0.5) * 7;
+                const local = plank - Math.floor(plank);
+                const joint = local < 0.025 || local > 0.975;
+                const stripe = Math.sin(x * 195 + Math.sin(z * 5) * 0.9) * 5;
+                base = joint ? [37, 28, 19] : [91 + stripe + grain * 6, 61 + stripe + grain * 5, 34 + stripe + grain * 4];
+                break;
+            }
             case "wood": {
                 const along = hit.axis === 0 ? y : x;
                 const across = hit.axis === 2 ? y : z;
-                const line = Math.sin(across * 145 + Math.sin(along * 8) * 1.6);
-                const shade = (grain - 0.5) * 10 + line * 6;
-                base = [83 + shade, 62 + shade, 40 + shade];
+                const variation = (grain - 0.5) * 10 + Math.sin(across * 145 + Math.sin(along * 8) * 1.6) * 6;
+                base = [83 + variation, 62 + variation, 40 + variation];
                 break;
             }
             case "fabric": {
-                const localX = Math.abs((camera.x + dx * hit.depth - box.x) / TILESIZE);
-                const localZ = (camera.cameraHeight + dz * hit.depth - box.z) / TILESIZE;
-                const border = localX > 0.33 || localZ < 0.07 || localZ > 1.05;
-                const emblem = localX + Math.abs(localZ - 0.58) * 0.55 < 0.1;
+                const localZ = (wz - box.z) / TILESIZE;
+                const border = Math.abs(x) > 0.33 || localZ < 0.07 || localZ > 1.05;
+                const emblem = Math.abs(x) + Math.abs(localZ - 0.58) * 0.55 < 0.1;
                 base = border || emblem ? [132, 111, 65] : [76 + grain * 8, 37 + grain * 5, 34 + grain * 5];
                 break;
             }
             case "brass": base = [136 + grain * 10, 113 + grain * 9, 64 + grain * 5]; break;
+            case "iron": base = [57 + grain * 6, 55 + grain * 6, 47 + grain * 5]; break;
+            case "candle": base = [192 + grain * 8, 170 + grain * 8, 119 + grain * 6]; break;
+            case "flame": {
+                const fog = fogAmount(hit.depth);
+                return [255 * (1 - fog) + ATMOSPHERE.fog[0] * fog,
+                    194 * (1 - fog) + ATMOSPHERE.fog[1] * fog,
+                    82 * (1 - fog) + ATMOSPHERE.fog[2] * fog];
+            }
             case "book": base = hit.axis === 2 ? [66, 55, 44] : [132 + grain * 6, 124 + grain * 6, 100 + grain * 5]; break;
             default: base = [117 + grain * 13, 120 + grain * 13, 107 + grain * 11];
         }
