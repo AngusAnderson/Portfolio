@@ -11,7 +11,7 @@ import { SessionController } from "./SessionController";
 
 import { PROJECTS } from "../data/projects";
 
-import { createDemoPainting } from "../engine/projects/createDemoPainting";
+import { createProjectPaintings } from "../engine/projects/createProjectPainting";
 
 import { ProjectSystem } from "../engine/projects/ProjectSystem";
 
@@ -84,39 +84,33 @@ export class Game {
 
             onResetTime: () => {
                 this.previousTime = null;
-            },
+            }
         });
 
-        const firstProject = PROJECTS[0];
+        console.table(
+            PROJECTS.map((project) => ({
+                id: project.id,
+                title: project.title,
+                description: project.description
+            }))
+        );
 
-        const demoPainting = firstProject
-            ? createDemoPainting(
-                this.map,
-                this.player,
-                firstProject,
-                "keep-gallery"
-            )
-            : null;
+        const paintings = createProjectPaintings(
+            this.map,
+            this.player,
+            PROJECTS,
+            "keep-gallery",
+            6
+        );
 
-        if (firstProject && !demoPainting) {
+        if (paintings.length === 0) {
             console.warn(
-                "Could not find a suitable wall for the demo painting."
-            );
-        }
-
-        if (demoPainting) {
-            console.info(
-                "Demo painting position:",
-                {
-                    x: demoPainting.x,
-                    y: demoPainting.y,
-                    normalAngle: demoPainting.normalAngle,
-                }
+                "Could not find suitable walls for project paintings."
             );
         }
 
         this.projects = new ProjectSystem({
-            paintings: demoPainting ? [demoPainting] : [],
+            paintings,
 
             view: this.raycaster,
             canvas: this.canvas,
@@ -129,7 +123,7 @@ export class Game {
 
             onCloseProject: () => {
                 this.session.closeProject();
-            },
+            }
         });
     }
 
@@ -195,10 +189,6 @@ export class Game {
 
     private render(): void {
         this.renderBackground();
-
-        // Uncomment these for the top-down debugging view:
-        // this.map.render(this.context);
-        // this.player.render(this.context);
 
         this.raycaster.render(this.context);
 

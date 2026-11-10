@@ -27,6 +27,10 @@ export class PaintingRenderer {
         paintings: readonly ProjectPainting[],
         view: ProjectView
     ): void {
+        if (paintings.length === 0) {
+            return;
+        }
+
         const camera = view.getWorldCamera();
 
         const screenWidth = context.canvas.width;
@@ -76,10 +80,6 @@ export class PaintingRenderer {
                 continue;
             }
 
-            // ----------------------------------------
-            // Project and clip the horizontal edges
-            // ----------------------------------------
-
             const getCameraEdge = (
                 side: number
             ): CameraEdge => {
@@ -96,7 +96,6 @@ export class PaintingRenderer {
                     depth:
                         relativeX * forwardX +
                         relativeY * forwardY,
-
                     sideways:
                         relativeX * rightX +
                         relativeY * rightY,
@@ -156,27 +155,56 @@ export class PaintingRenderer {
                 )
             );
 
+            if (firstX > lastX) {
+                continue;
+            }
+
+            const firstColumn = Math.max(
+                0,
+                Math.floor(firstX / RES)
+            );
+
+            const lastColumn = Math.min(
+                NUM_RAYS - 1,
+                Math.floor(lastX / RES)
+            );
+
+            if (firstColumn > lastColumn) {
+                continue;
+            }
+
             const texture = this.getTexture(
                 painting.project
             );
 
-            // ----------------------------------------
-            // Render vertical strips
-            // ----------------------------------------
+            for (
+                let column = firstColumn;
+                column <= lastColumn;
+                column++
+            ) {
+                const x = Math.max(
+                    firstX,
+                    column * RES
+                );
 
-            for (let x = firstX; x <= lastX; x++) {
-                const column = Math.floor(x / RES);
+                const stripEnd = Math.min(
+                    lastX + 1,
+                    (column + 1) * RES,
+                    screenWidth
+                );
 
-                if (
-                    column < 0 ||
-                    column >= NUM_RAYS
-                ) {
+                const stripWidth = stripEnd - x;
+
+                if (stripWidth <= 0) {
                     continue;
                 }
 
-                const cameraX = 2 * ((column + 0.5) / NUM_RAYS) - 1;
+                const cameraX =
+                    2 * ((column + 0.5) / NUM_RAYS) - 1;
 
-                const directionX = forwardX + rightX * cameraX * halfFovTangent;
+                const directionX =
+                    forwardX +
+                    rightX * cameraX * halfFovTangent;
 
                 const directionY =
                     forwardY +
@@ -283,20 +311,22 @@ export class PaintingRenderer {
 
                     context.drawImage(
                         texture,
-
                         textureX,
                         sourceY,
                         1,
                         sourceHeight,
-
                         x,
                         runStart,
-                        1,
+                        stripWidth,
                         end - runStart
                     );
                 };
 
-                for (let y = firstY; y < endY; y++) {
+                for (
+                    let y = firstY;
+                    y < endY;
+                    y++
+                ) {
                     const visible =
                         view.isWorldPointVisible(
                             x,
@@ -331,7 +361,6 @@ export class PaintingRenderer {
 
         return {
             depth: NEAR_DEPTH,
-
             sideways:
                 behind.sideways +
                 (ahead.sideways - behind.sideways) *
@@ -361,19 +390,17 @@ export class PaintingRenderer {
             );
         }
 
-        // Outer frame.
+        context.imageSmoothingEnabled = false;
+
         context.fillStyle = "#b3975e";
         context.fillRect(0, 0, 160, 160);
 
-        // Inner frame.
         context.fillStyle = "#453824";
         context.fillRect(5, 5, 150, 150);
 
-        // Picture background.
         context.fillStyle = "#182029";
         context.fillRect(10, 10, 140, 140);
 
-        // Fallback title when no image is supplied.
         context.fillStyle = "#e4d3ac";
         context.font = "16px Georgia";
         context.textAlign = "center";
@@ -391,21 +418,32 @@ export class PaintingRenderer {
         if (project.image) {
             const image = new Image();
 
-            image.addEventListener("load", () => {
-                context.drawImage(
-                    image,
-                    10,
-                    10,
-                    140,
-                    140
-                );
-            });
+            image.addEventListener(
+                "load",
+                () => {
+                    context.fillStyle = "#182029";
+                    context.fillRect(10, 10, 140, 140);
 
-            image.addEventListener("error", () => {
-                console.warn(
-                    `Could not load painting image for "${project.title}"`
-                );
-            });
+                    context.drawImage(
+                        image,
+                        10,
+                        10,
+                        140,
+                        140
+                    );
+                },
+                { once: true }
+            );
+
+            image.addEventListener(
+                "error",
+                () => {
+                    console.warn(
+                        `Could not load painting image for "${project.title}"`
+                    );
+                },
+                { once: true }
+            );
 
             image.src = project.image;
         }
