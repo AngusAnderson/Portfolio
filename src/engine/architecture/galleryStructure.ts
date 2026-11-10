@@ -2,7 +2,7 @@ import { TILESIZE } from "../../settings";
 import type { SuspendedPlatform, SuspendedPlatformDefinition } from "../map/types";
 import type { PropMaterial } from "../props/definitions";
 
-export const DOOR_OPEN_ANGLE = Math.PI / 6;
+export const DOOR_OPEN_ANGLE = Math.PI / 3;
 export const DOOR_LEAF_WIDTH = 1.43;
 
 export const GALLERY_ROOF: SuspendedPlatformDefinition = {

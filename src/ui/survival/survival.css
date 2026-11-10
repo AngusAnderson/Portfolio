@@ -1,0 +1,26 @@
+.survival-hud {
+    position: fixed;
+    z-index: 150;
+    box-sizing: border-box;
+    overflow: hidden;
+    pointer-events: none;
+    color: #eee5cf;
+    font: 700 clamp(10px, 1.15vw, 16px)/1.5 "Courier New", monospace;
+    text-shadow: 2px 2px #000;
+}
+.survival-hud[hidden] { display: none; }
+.survival-top, .survival-bottom { position: absolute; left: 3%; right: 3%; display: flex; justify-content: space-between; gap: 20px; }
+.survival-top { top: 4%; color: #d8c08e; }
+.survival-bottom { bottom: 8%; align-items: end; }
+.survival-bottom > div { display: grid; gap: 4px; }
+.survival-weapon { text-align: right; }
+.survival-weapon small { color: #b4b2a4; }
+.survival-controls { position: absolute; bottom: 2%; left: 3%; font-size: 0.7em; color: #bcb7a7; }
+.survival-message { position: absolute; top: 14%; left: 8%; right: 8%; text-align: center; color: #e5c99b; }
+.survival-prompt { position: absolute; left: 10%; right: 10%; bottom: 24%; text-align: center; white-space: pre-line; }
+.survival-hud[data-danger="true"] [data-survival="health"] { color: #ff8b77; }
+.survival-results { width: min(520px, calc(100% - 32px)); padding: 32px; color: #efe1bf; background: #101610; border: 1px solid #9d9566; border-radius: 0; font: 16px/1.6 "Courier New", monospace; }
+.survival-results::backdrop { background: rgb(0 0 0 / 80%); }
+.survival-results h2 { font-size: 1.25rem; }
+.survival-results button { display: block; width: 100%; margin-top: 12px; padding: 14px; background: #253126; color: #e2dfc5; border: 1px solid #818664; cursor: pointer; font: inherit; }
+.survival-results button:focus-visible { outline: 2px solid #d1e995; outline-offset: 3px; }
